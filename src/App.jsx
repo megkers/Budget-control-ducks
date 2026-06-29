@@ -2134,7 +2134,7 @@ return (
 
       return (
         <div style={{ marginBottom: "8px" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "flex-start", marginBottom: "8px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "stretch", marginBottom: "8px" }}>
 
             <Card style={{ ...kpiCard, minWidth: "280px" }}>
               <div style={kpiLbl}>Fixed & Committed</div>
@@ -2172,7 +2172,7 @@ return (
                 <div style={kpiLbl}>Monthly Income</div>
                 <div style={{ ...kpiAmt, color: T.blue, marginTop: "6px" }}>{fmt(totalIncomeCfg)}</div>
               </div>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minWidth: "140px" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "stretch", minWidth: "140px", alignSelf: "stretch" }}>
                 {(() => {
                   const flowItems = [
                     { label: "Fixed", value: fixedCommitted, color: "#3D6CB4" },
@@ -2201,8 +2201,8 @@ return (
                   const miniLinkPath = sankeyLinkHorizontal();
 
                   return (
-                    <div style={{ position: "relative", width: "100%", height: svgHeight + "px" }}>
-                      <svg viewBox={"0 0 " + svgWidth + " " + svgHeight} preserveAspectRatio="none" style={{ width: "100%", height: "100%", cursor: "pointer" }}>
+                    <div style={{ position: "relative", width: "100%", flex: 1, minHeight: svgHeight + "px" }}>
+                      <svg viewBox={"0 0 " + svgWidth + " " + svgHeight} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", cursor: "pointer" }}>
                         {miniLayout.links.map((link, i) => {
                           const isHovered = moneyFlowHovered === link.target.id;
                           const opacity = moneyFlowHovered && !isHovered ? 0.14 : (isHovered ? 0.9 : 0.32);
