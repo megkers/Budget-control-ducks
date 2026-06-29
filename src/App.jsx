@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { sankey as d3Sankey, sankeyLinkHorizontal } from "d3-sankey";
 
 // ------------
 // localStorage helpers
@@ -2249,109 +2250,90 @@ return (
                 </div>
                 <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.blue }}>open_in_new</span>
               </div>
-              <div style={{ flex: 1, background: T.surf2, borderRadius: "16px", padding: "14px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={{ flex: 1, background: T.surf2, borderRadius: "16px", padding: "12px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                 {(() => {
                   const flowItems = [
-                    { label: "Fixed", value: fixedCommitted, color: T.blue },
-                    { label: "Disc", value: discBudget, color: "#FFB347" },
-                    { label: "Reserves", value: reservesTotal, color: "#B8A9FF" },
-                    { label: "Debt", value: debtPaymentTotal, color: T.red },
-                    { label: "Leftover", value: leftover, color: T.green },
+                    { label: "Fixed", value: fixedCommitted, color: "#3D6CB4" },
+                    { label: "Disc", value: discBudget, color: "#C28A3A" },
+                    { label: "Reserves", value: reservesTotal, color: "#8B7CFF" },
+                    { label: "Debt", value: debtPaymentTotal, color: "#C25450" },
+                    { label: "Leftover", value: leftover, color: "#2C8C76" },
                   ].filter(item => item.value > 0);
-                  
+
                   if (flowItems.length === 0) return <div style={{ color: T.text2 }}>No allocation data</div>;
-                  
-                  const total = totalIncomeCfg || 1;
+
                   const svgHeight = 140;
-                  const svgWidth = 400;
-                  const padding = 16;
-                  const nodeRadius = 8;
-                  const columnX = [40, 200, 360];
-                  
-                  let yOffset = padding;
-                  const nodePositions = flowItems.map(item => {
-                    const nodeHeight = Math.max(20, Math.round((item.value / total) * (svgHeight - padding * 2)));
-                    const y = yOffset + nodeHeight / 2;
-                    yOffset += nodeHeight + 6;
-                    return { ...item, y, nodeHeight };
-                  });
-                  
-                  const sourceY = svgHeight / 2;
-                  
+                  const svgWidth = 320;
+                  const miniNodes = [{ id: "Income" }].concat(flowItems.map(f => ({ id: f.label })));
+                  const miniLinks = flowItems.map(f => ({ source: "Income", target: f.label, value: f.value }));
+                  const miniColorMap = { Income: "#C2C9D2" };
+                  flowItems.forEach(f => { miniColorMap[f.label] = f.color; });
+
+                  const miniLayout = d3Sankey()
+                    .nodeId(d => d.id)
+                    .nodeWidth(18)
+                    .nodePadding(8)
+                    .extent([[12, 10], [svgWidth - 12, svgHeight - 10]])
+                    ({ nodes: miniNodes.map(d => ({ ...d })), links: miniLinks.map(d => ({ ...d })) });
+
+                  const miniLinkPath = sankeyLinkHorizontal();
+
                   return (
-                    <div style={{ position: "relative", width: "100%", height: `${svgHeight + 20}px` }}>
-                      <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", cursor: "pointer" }}>
-                        {/* Source node (income) */}
-                        <rect x={columnX[0] - nodeRadius} y={sourceY - 12} width={nodeRadius * 2} height="24" rx="6" fill={T.text3} opacity="0.12" />
-                        
-                        {/* Flow paths and target nodes */}
-                        {nodePositions.map(node => {
-                          const targetY = node.y;
-                          const isHovered = moneyFlowHovered === node.label;
-                          const opacity = moneyFlowHovered && !isHovered ? 0.15 : (isHovered ? 0.95 : 0.7);
-                          const strokeWidth = Math.max(8, Math.round((node.value / total) * 24));
-                          const cp1x = columnX[0] + 40;
-                          const cp2x = columnX[2] - 40;
-                          const path = `M ${columnX[0]} ${sourceY} C ${cp1x} ${sourceY}, ${cp2x} ${targetY}, ${columnX[2]} ${targetY}`;
-                          
+                    <div style={{ position: "relative", width: "100%", height: svgHeight + "px" }}>
+                      <svg viewBox={"0 0 " + svgWidth + " " + svgHeight} preserveAspectRatio="none" style={{ width: "100%", height: "100%", cursor: "pointer" }}>
+                        {miniLayout.links.map((link, i) => {
+                          const isHovered = moneyFlowHovered === link.target.id;
+                          const opacity = moneyFlowHovered && !isHovered ? 0.14 : (isHovered ? 0.9 : 0.32);
                           return (
-                            <g key={node.label}>
-                              <path 
-                                d={path} 
-                                fill="none" 
-                                stroke={node.color} 
-                                strokeWidth={strokeWidth} 
-                                strokeLinecap="round" 
-                                opacity={opacity}
-                                style={{ transition: "opacity 0.2s" }}
-                                onMouseEnter={() => setMoneyFlowHovered(node.label)}
-                                onMouseLeave={() => setMoneyFlowHovered(null)}
-                              />
-                              {/* Target node */}
-                              <rect 
-                                x={columnX[2] - nodeRadius} 
-                                y={targetY - node.nodeHeight / 2} 
-                                width={nodeRadius * 2} 
-                                height={node.nodeHeight} 
-                                rx="6" 
-                                fill={node.color} 
-                                opacity={moneyFlowHovered && moneyFlowHovered !== node.label ? 0.08 : 0.18}
-                                style={{ transition: "opacity 0.2s" }}
-                                onMouseEnter={() => setMoneyFlowHovered(node.label)}
-                                onMouseLeave={() => setMoneyFlowHovered(null)}
-                              />
-                              {/* Label and tooltip trigger */}
-                              <text 
-                                x={columnX[2] + 20} 
-                                y={targetY + 4} 
-                                fontSize="11" 
-                                fill={isHovered ? node.color : T.text1}
-                                fontWeight={isHovered ? "700" : "400"}
-                                style={{ cursor: "pointer", transition: "fill 0.2s" }}
-                                onMouseEnter={() => {
-                                  setMoneyFlowHovered(node.label);
-                                  setMoneyFlowTooltip({ x: columnX[2] + 50, y: targetY - 8, label: node.label, value: node.value });
-                                }}
-                                onMouseLeave={() => {
-                                  setMoneyFlowHovered(null);
-                                  setMoneyFlowTooltip(null);
-                                }}
-                              >
-                                {node.label} ({Math.round((node.value / total) * 100)}%)
-                              </text>
-                            </g>
+                            <path
+                              key={"ml-" + i}
+                              d={miniLinkPath(link)}
+                              fill="none"
+                              stroke={miniColorMap[link.target.id]}
+                              strokeWidth={Math.max(4, link.width)}
+                              opacity={opacity}
+                              style={{ transition: "opacity 0.2s" }}
+                              onMouseEnter={() => setMoneyFlowHovered(link.target.id)}
+                              onMouseLeave={() => setMoneyFlowHovered(null)}
+                            />
+                          );
+                        })}
+                        {miniLayout.nodes.map(node => {
+                          const h = node.y1 - node.y0;
+                          const isHovered = moneyFlowHovered === node.id;
+                          return (
+                            <rect
+                              key={node.id}
+                              x={node.x0}
+                              y={node.y0}
+                              width={node.x1 - node.x0}
+                              height={h}
+                              rx={Math.min(4, h / 2)}
+                              fill={miniColorMap[node.id]}
+                              opacity={node.id === "Income" ? 0.9 : (isHovered ? 0.95 : 0.9)}
+                              style={{ transition: "opacity 0.2s" }}
+                              onMouseEnter={() => {
+                                if (node.id !== "Income") {
+                                  setMoneyFlowHovered(node.id);
+                                  setMoneyFlowTooltip({ x: node.x1 + 8, y: node.y0 - 4, label: node.id, value: flowItems.find(f => f.label === node.id)?.value || 0 });
+                                }
+                              }}
+                              onMouseLeave={() => {
+                                setMoneyFlowHovered(null);
+                                setMoneyFlowTooltip(null);
+                              }}
+                            />
                           );
                         })}
                       </svg>
-                      
-                      {/* Tooltip */}
+
                       {moneyFlowTooltip && (
                         <div style={{
                           position: "absolute",
                           left: moneyFlowTooltip.x,
                           top: moneyFlowTooltip.y,
                           background: T.bg,
-                          border: `1px solid ${T.bord}`,
+                          border: "1px solid " + T.bord,
                           borderRadius: "8px",
                           padding: "6px 10px",
                           fontSize: "11px",
@@ -2361,7 +2343,8 @@ return (
                           zIndex: 10,
                           boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
                         }}>
-                          {fmt(moneyFlowTooltip.value)}
+                          <div style={{ fontWeight: "700", color: T.blue }}>{moneyFlowTooltip.label}</div>
+                          <div style={{ marginTop: "2px" }}>{fmt(moneyFlowTooltip.value)}</div>
                         </div>
                       )}
                     </div>
@@ -3600,30 +3583,57 @@ return (
       categories.push({ key: "leftover", label: "Leftover", value: leftover, color: T.green, items: [{ label: "Leftover cash", value: leftover, color: T.green }] });
     }
 
-    let categoryOffset = 16;
-    const categoryNodes = categories.map(cat => {
-      const height = Math.max(30, Math.round((cat.value / total) * 240));
-      const node = { ...cat, height, y: categoryOffset };
-      categoryOffset += height + 12;
-      return node;
+    const sankeyNodes = [];
+    const sankeyLinks = [];
+    const colorMap = {};
+    sankeyNodes.push({ id: "Income" });
+    colorMap["Income"] = T.blue;
+    categories.forEach(cat => {
+      sankeyNodes.push({ id: "cat-" + cat.key });
+      colorMap["cat-" + cat.key] = cat.color;
+      sankeyLinks.push({ source: "Income", target: "cat-" + cat.key, value: cat.value });
+      cat.items.forEach((item, i) => {
+        const bucketId = "bucket-" + cat.key + "-" + i;
+        sankeyNodes.push({ id: bucketId });
+        colorMap[bucketId] = item.color;
+        sankeyLinks.push({ source: "cat-" + cat.key, target: bucketId, value: item.value });
+      });
     });
 
-    let bucketOffset = 16;
-    const bucketNodes = categories.flatMap(cat => cat.items.map(item => {
-      const height = Math.max(14, Math.round((item.value / total) * 220));
-      const node = { ...item, parent: cat.label, height, y: bucketOffset };
-      bucketOffset += height + 8;
-      return node;
-    }));
-    const svgHeight = Math.max(280, bucketOffset + 16, categoryOffset + 16);
-    const viewWidth = 600;
-    const sourceX = 18;
-    const sourceWidth = 96;
-    const categoryX = 206;
-    const categoryWidth = 96;
-    const bucketX = 430;
-    const bucketWidth = 100;
-    const sourceY = (svgHeight - 64) / 2;
+    const viewWidth = 640;
+    const viewHeight = Math.max(300, categories.reduce((s, c) => s + c.items.length, 0) * 32 + 60);
+    const nodeWidth = 18;
+    const nodePadding = 14;
+
+    const layout = d3Sankey()
+      .nodeId(d => d.id)
+      .nodeWidth(nodeWidth)
+      .nodePadding(nodePadding)
+      .extent([[18, 24], [viewWidth - 18, viewHeight - 24]])
+      ({ nodes: sankeyNodes.map(d => ({ ...d })), links: sankeyLinks.map(d => ({ ...d })) });
+
+    const labelForId = (id) => {
+      if (id === "Income") return "Income";
+      for (const cat of categories) {
+        if (id === "cat-" + cat.key) return cat.label;
+        for (let i = 0; i < cat.items.length; i++) {
+          if (id === "bucket-" + cat.key + "-" + i) return cat.items[i].label;
+        }
+      }
+      return "";
+    };
+    const valueForId = (id) => {
+      if (id === "Income") return totalIncomeCfg;
+      for (const cat of categories) {
+        if (id === "cat-" + cat.key) return cat.value;
+        for (let i = 0; i < cat.items.length; i++) {
+          if (id === "bucket-" + cat.key + "-" + i) return cat.items[i].value;
+        }
+      }
+      return 0;
+    };
+
+    const linkPath = sankeyLinkHorizontal();
 
     return (
       <div>
@@ -3639,38 +3649,37 @@ return (
         </div>
 
         <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "18px", padding: "16px", overflowX: "auto" }}>
-          <svg width="100%" height={svgHeight} viewBox={`0 0 ${viewWidth} ${svgHeight}`} style={{ minWidth: "600px", display: "block" }}>
-            <rect x={sourceX} y={sourceY} width={sourceWidth} height={64} rx="18" fill={T.blue} opacity="0.16" />
-            <text x={sourceX + 14} y={sourceY + 20} fill={T.text2} fontSize="10" fontWeight="700">Income</text>
-            <text x={sourceX + 14} y={sourceY + 42} fill={T.text1} fontSize="16" fontWeight="700">{fmt(totalIncomeCfg)}</text>
-
-            {categoryNodes.map(node => (
-              <g key={node.key}>
-                <rect x={categoryX} y={node.y} width={categoryWidth} height={node.height} rx="18" fill={node.color} opacity="0.18" />
-                <text x={categoryX + categoryWidth / 2} y={node.y + 18} fill={node.color} fontSize="10" fontWeight="700" textAnchor="middle">{node.label}</text>
-                <text x={categoryX + categoryWidth / 2} y={node.y + 34} fill={T.text1} fontSize="12" fontWeight="700" textAnchor="middle">{fmt(node.value)}</text>
-              </g>
+          <svg width="100%" height={viewHeight} viewBox={`0 0 ${viewWidth} ${viewHeight}`} style={{ minWidth: "640px", display: "block" }}>
+            {layout.links.map((link, i) => (
+              <path key={"link-" + i} d={linkPath(link)} fill="none" stroke={colorMap[link.source.id] || T.text3} strokeWidth={Math.max(4, link.width)} strokeOpacity={0.45} />
             ))}
-
-            {bucketNodes.map((node, idx) => (
-              <g key={node.label + idx}>
-                <rect x={bucketX} y={node.y} width={bucketWidth} height={node.height} rx="16" fill={node.color} opacity="0.16" />
-                <text x={bucketX + 12} y={node.y + 14} fill={T.text1} fontSize="9" fontWeight="700" textAnchor="start" style={{ whiteSpace: "pre" }}>{node.label}</text>
-              </g>
-            ))}
-
-            {categoryNodes.map(node => {
-              const fromY = node.y + node.height / 2;
-              const path = `M ${sourceX + sourceWidth} ${sourceY + 32} C ${sourceX + sourceWidth + 60} ${sourceY + 32}, ${categoryX - 30} ${fromY}, ${categoryX} ${fromY}`;
-              return <path key={node.key} d={path} fill="none" stroke={node.color} strokeWidth={Math.max(12, Math.round((node.value / total) * 30))} strokeLinecap="round" opacity="0.88" />;
-            })}
-
-            {bucketNodes.map((node, idx) => {
-              const parent = categoryNodes.find(cat => cat.label === node.parent);
-              const fromY = parent ? parent.y + parent.height / 2 : (svgHeight / 2);
-              const toY = node.y + node.height / 2;
-              const path = `M ${categoryX + categoryWidth} ${fromY} C ${categoryX + categoryWidth + 40} ${fromY}, ${bucketX - 30} ${toY}, ${bucketX} ${toY}`;
-              return <path key={node.label + "-flow" + idx} d={path} fill="none" stroke={node.color} strokeWidth={Math.max(8, Math.round((node.value / total) * 18))} strokeLinecap="round" opacity="0.75" />;
+            {layout.nodes.map(node => {
+              const label = labelForId(node.id);
+              const val = valueForId(node.id);
+              const h = node.y1 - node.y0;
+              const col = colorMap[node.id] || T.text3;
+              const isLeft = node.depth === 0;
+              const isRight = node.depth === 2;
+              return (
+                <g key={node.id}>
+                  <rect x={node.x0} y={node.y0} width={node.x1 - node.x0} height={h} rx={Math.min(6, h / 2)} fill={col} opacity={0.85} />
+                  {isLeft && h > 18 && (
+                    <>
+                      <text x={node.x0 + nodeWidth + 8} y={node.y0 + h / 2 - 7} fill={T.text2} fontSize="10" fontWeight="700" dominantBaseline="middle">{label}</text>
+                      <text x={node.x0 + nodeWidth + 8} y={node.y0 + h / 2 + 9} fill={T.text1} fontSize="14" fontWeight="700" dominantBaseline="middle">{fmt(val)}</text>
+                    </>
+                  )}
+                  {!isLeft && !isRight && h > 14 && (
+                    <>
+                      <text x={node.x0 + nodeWidth + 8} y={node.y0 + Math.min(16, h / 2)} fill={col} fontSize="10" fontWeight="700">{label}</text>
+                      {h > 30 && <text x={node.x0 + nodeWidth + 8} y={node.y0 + Math.min(32, h / 2 + 12)} fill={T.text1} fontSize="11" fontWeight="700">{fmt(val)}</text>}
+                    </>
+                  )}
+                  {isRight && (
+                    <text x={node.x0 - 6} y={node.y0 + h / 2} fill={T.text1} fontSize="9" fontWeight="700" textAnchor="end" dominantBaseline="middle">{label}</text>
+                  )}
+                </g>
+              );
             })}
           </svg>
         </div>
