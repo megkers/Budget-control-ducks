@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0a0e17" />
+    <title>Budget Control</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      body { margin: 0; }
+      [data-theme="dark"] input[type=number] { color-scheme: dark; }
+      [data-theme="light"] input[type=number] { color-scheme: light; }
+      .material-symbols-outlined {
+        font-family: 'Material Symbols Outlined';
+        font-weight: normal;
+        font-style: normal;
+        display: inline-block;
+        line-height: 1;
+        text-transform: none;
+        letter-spacing: normal;
+        word-wrap: normal;
+        white-space: nowrap;
+        direction: ltr;
+      }
+    </style>
+    <script>
+      // Set body bg before React loads to prevent flash
+      (function() {
+        var t = "dark";
+        try { t = localStorage.getItem("budgetTheme") || "dark"; } catch(e) {}
+        if (t === "system") {
+          try { t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; } catch(e) { t = "dark"; }
+        }
+        document.body.style.background = t === "light" ? "#f5f6fb" : "#0a0e17";
+        document.querySelector('meta[name="theme-color"]').content = t === "light" ? "#f5f6fb" : "#0a0e17";
+        document.body.dataset.theme = t === "light" ? "light" : "dark";
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

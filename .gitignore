@@ -1,0 +1,15 @@
+# Dependencies and build output (regenerated, never commit)
+node_modules/
+dist/
+# Environment and secrets
+.env
+.env.*
+
+# OS cruft
+.DS_Store
+
+# Private working docs (keep out of the public repo)
+CLAUDE.md
+session_handoff.md
+budget-control-context.md
+CLAUDE.md
