@@ -2167,90 +2167,12 @@ return (
               </div>
             </Card>
 
-            <Card style={{ ...kpiCard, minWidth: "250px", minHeight: "85px", padding: "10px", cursor: "pointer", display: "flex", flexDirection: "column" }} onClick={function() { openEditModal("income"); }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px" }}>
+            <Card style={{ ...kpiCard, minWidth: "320px", cursor: "pointer", display: "flex", flexDirection: "row", alignItems: "flex-start", gap: "12px", padding: "12px" }} onClick={() => setShowFlowInfo(true)}>
+              <div style={{ display: "flex", flexDirection: "column", flexShrink: 0, minWidth: "90px" }}>
                 <div style={kpiLbl}>Monthly Income</div>
-                <span className="material-symbols-outlined" style={{ fontSize: "14px", color: T.text3 }}>edit</span>
+                <div style={{ ...kpiAmt, color: T.blue, marginTop: "6px" }}>{fmt(totalIncomeCfg)}</div>
               </div>
-              <div style={{ display: "flex", flex: "1", gap: "10px", alignItems: "stretch" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "5px", justifyContent: "center", flexShrink: 0 }}>
-                  <div style={{ ...kpiAmt, color: "#B8A9FF" }}>{fmt(totalIncomeCfg)}</div>
-                  <div style={{ fontSize: "12px", color: T.text1 }}>fully allocated</div>
-                </div>
-                <div style={{ flex: "1", display: "flex", minWidth: "50px" }}>
-                  {(() => {
-                    const treeItems = [
-                      { key: "f", label: "Fixed", value: fixedCommitted, color: T.blue },
-                      { key: "d", label: "Disc", value: discBudget, color: "#FFB347" },
-                      { key: "r", label: "Reserves", value: reservesTotal, color: "#B8A9FF" },
-                    ].filter(i => i.value > 0).sort((a, b) => b.value - a.value);
-                    const treeTotal = treeItems.reduce((s, i) => s + i.value, 0) || 1;
-                    const [first, ...rest] = treeItems;
-                    if (!first) return null;
-                    return (
-                      <div style={{ display: "flex", flex: "1", borderRadius: "4px", overflow: "hidden", gap: "2px" }}>
-                        <div style={{ flex: first.value, background: first.color, display: "flex", alignItems: "center", justifyContent: "center", minWidth: "24px" }}>
-                          <span style={{ fontSize: "12px", color: "#fff", fontWeight: "700", opacity: 0.9 }}>{Math.round((first.value/treeTotal)*100)}%</span>
-                        </div>
-                        {rest.length > 0 && (
-                          <div style={{ flex: treeTotal - first.value, display: "flex", flexDirection: "column", gap: "2px", minWidth: "24px" }}>
-                            {rest.map(function(item) {
-                              return (
-                                <div key={item.key} style={{ flex: item.value, background: item.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                  <span style={{ fontSize: "12px", color: "#fff", fontWeight: "700", opacity: 0.9 }}>{Math.round((item.value/treeTotal)*100)}%</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            </Card>
-
-            <Card border={isPayday ? T.green : T.bord} style={{ ...kpiCard, minWidth: "220px" }}>
-              <div style={kpiLbl}>Payday</div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
-                <div>
-                  <div style={{ ...kpiAmt, color: isPayday ? T.green : T.text1 }}>{isPayday ? "Today" : daysUntilPayday + "d"}</div>
-                  <div style={{ ...kpiSub, whiteSpace: "nowrap" }}>{isPayday ? fmt(totalIncomeCfg) + " incoming" : "Est. " + MONTHS[nextPayMonthIdx] + " " + ordinal(primaryPayday)}</div>
-                </div>
-                <span className="material-symbols-outlined" style={{ fontSize: "32px", color: isPayday ? T.green : T.text2, opacity: 0.6, flexShrink: 0 }}>calendar_clock</span>
-              </div>
-            </Card>
-
-            {debts.length > 0 && (() => {
-              const totalDebt = debts.reduce((s,d) => s + d.balance, 0);
-              const monthsElapsed = (year - setupYear) * 12 + (month - setupMonth) + 1;
-              const paidYTD = debts.reduce((s,d) => s + (d.monthly * Math.max(0, monthsElapsed)), 0);
-              const denom = totalDebt + paidYTD;
-              const paidPct = denom > 0 ? Math.round((paidYTD / denom) * 100) : 0;
-              return (
-                <Card style={{ ...kpiCard, minWidth: "250px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "stretch", gap: "10px" }}>
-                    <div>
-                      <div style={kpiLbl}>Debt Paid</div>
-                      <div style={{ ...kpiAmt, color: "#B8A9FF", marginTop: "6px" }}>{paidPct}% paid</div>
-                      <div style={kpiSub}>{fmt(totalDebt)} outstanding</div>
-                    </div>
-                    <div style={{ position: "relative", width: "20px", flexShrink: 0, alignSelf: "stretch", border: "1px solid #B8A9FF", borderRadius: "3px", background: T.text3, overflow: "hidden", minHeight: "54px" }}>
-                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: paidPct + "%", background: "#B8A9FF", borderRadius: "3px" }} />
-                    </div>
-                  </div>
-                </Card>
-              );
-            })()}
-            <Card style={{ ...kpiCard, minWidth: "320px", minHeight: "200px", cursor: "pointer", display: "flex", flexDirection: "column" }} onClick={() => setShowFlowInfo(true)}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                <div>
-                  <div style={kpiLbl}>Money Flow</div>
-                  <div style={{ ...kpiAmt, color: T.blue, marginTop: "6px" }}>{fmt(totalIncomeCfg)}</div>
-                </div>
-                <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.blue }}>open_in_new</span>
-              </div>
-              <div style={{ flex: 1, background: T.surf2, borderRadius: "16px", padding: "12px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minWidth: "140px" }}>
                 {(() => {
                   const flowItems = [
                     { label: "Fixed", value: fixedCommitted, color: "#3D6CB4" },
@@ -2262,8 +2184,8 @@ return (
 
                   if (flowItems.length === 0) return <div style={{ color: T.text2 }}>No allocation data</div>;
 
-                  const svgHeight = 140;
-                  const svgWidth = 320;
+                  const svgHeight = 45;
+                  const svgWidth = 200;
                   const miniNodes = [{ id: "Income" }].concat(flowItems.map(f => ({ id: f.label })));
                   const miniLinks = flowItems.map(f => ({ source: "Income", target: f.label, value: f.value }));
                   const miniColorMap = { Income: "#C2C9D2" };
@@ -2271,9 +2193,9 @@ return (
 
                   const miniLayout = d3Sankey()
                     .nodeId(d => d.id)
-                    .nodeWidth(18)
-                    .nodePadding(8)
-                    .extent([[12, 10], [svgWidth - 12, svgHeight - 10]])
+                    .nodeWidth(10)
+                    .nodePadding(3)
+                    .extent([[4, 2], [svgWidth - 4, svgHeight - 2]])
                     ({ nodes: miniNodes.map(d => ({ ...d })), links: miniLinks.map(d => ({ ...d })) });
 
                   const miniLinkPath = sankeyLinkHorizontal();
@@ -2352,6 +2274,39 @@ return (
                 })()}
               </div>
             </Card>
+
+            <Card border={isPayday ? T.green : T.bord} style={{ ...kpiCard, minWidth: "220px" }}>
+              <div style={kpiLbl}>Payday</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
+                <div>
+                  <div style={{ ...kpiAmt, color: isPayday ? T.green : T.text1 }}>{isPayday ? "Today" : daysUntilPayday + "d"}</div>
+                  <div style={{ ...kpiSub, whiteSpace: "nowrap" }}>{isPayday ? fmt(totalIncomeCfg) + " incoming" : "Est. " + MONTHS[nextPayMonthIdx] + " " + ordinal(primaryPayday)}</div>
+                </div>
+                <span className="material-symbols-outlined" style={{ fontSize: "32px", color: isPayday ? T.green : T.text2, opacity: 0.6, flexShrink: 0 }}>calendar_clock</span>
+              </div>
+            </Card>
+
+            {debts.length > 0 && (() => {
+              const totalDebt = debts.reduce((s,d) => s + d.balance, 0);
+              const monthsElapsed = (year - setupYear) * 12 + (month - setupMonth) + 1;
+              const paidYTD = debts.reduce((s,d) => s + (d.monthly * Math.max(0, monthsElapsed)), 0);
+              const denom = totalDebt + paidYTD;
+              const paidPct = denom > 0 ? Math.round((paidYTD / denom) * 100) : 0;
+              return (
+                <Card style={{ ...kpiCard, minWidth: "250px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "stretch", gap: "10px" }}>
+                    <div>
+                      <div style={kpiLbl}>Debt Paid</div>
+                      <div style={{ ...kpiAmt, color: "#B8A9FF", marginTop: "6px" }}>{paidPct}% paid</div>
+                      <div style={kpiSub}>{fmt(totalDebt)} outstanding</div>
+                    </div>
+                    <div style={{ position: "relative", width: "20px", flexShrink: 0, alignSelf: "stretch", border: "1px solid #B8A9FF", borderRadius: "3px", background: T.text3, overflow: "hidden", minHeight: "54px" }}>
+                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: paidPct + "%", background: "#B8A9FF", borderRadius: "3px" }} />
+                    </div>
+                  </div>
+                </Card>
+              );
+            })()}
 
           </div>
 
