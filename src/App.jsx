@@ -3723,7 +3723,7 @@ return (
       { key: "reserves", label: "Reserves", value: reservesTotal, color: "#B8A9FF", items: buckets.filter(b => RESERVE_IDS_LIST.includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
     ].filter(group => group.value > 0);
     if (debtPaymentTotal > 0) {
-      categories.push({ key: "debt", label: "Debt", value: debtPaymentTotal, color: T.red, items: debts.filter(d => (d.monthly || 0) > 0).map(d => ({ label: d.name || "Debt", value: d.monthly, color: T.red })) });
+      categories.push({ key: "debt", label: "Debt", value: debtPaymentTotal, color: "#FF6B9D", items: debts.filter(d => (d.monthly || 0) > 0).map(d => ({ label: d.name || "Debt", value: d.monthly, color: "#FF6B9D" })) });
     }
     if (leftover > 0) {
       categories.push({ key: "leftover", label: "Leftover", value: leftover, color: T.green, items: [{ label: "Leftover cash", value: leftover, color: T.green }] });
@@ -3796,7 +3796,7 @@ return (
           </div>
           <div style={{ minWidth: "160px", textAlign: "right" }}>
             <div style={{ fontSize: "12px", color: T.text2, marginBottom: "6px" }}>Debt payments</div>
-            <div style={{ fontSize: "18px", fontWeight: "700", color: T.red }}>{fmt(debtPaymentTotal)}</div>
+            <div style={{ fontSize: "18px", fontWeight: "700", color: "#FF6B9D" }}>{fmt(debtPaymentTotal)}</div>
           </div>
         </div>
 
