@@ -20,7 +20,7 @@ checks = [
     ('No DebtDetail JSX tag',        '<DebtDetail' not in code),
     # -- NaN / edge case guards --
     ('NaN debt fix',                 'loadDebts() || []' in code),
-    ('NaN paidPct fix',              'denom > 0 ? Math.round' in code),
+    ('NaN paidPct fix',              'startTotal > 0 ? Math.round' in code),
     ('Debt card hidden when empty',  'debts.length > 0 ? (' in code),
     ('Debt tab empty state',         'No debts added yet' in code),
     # -- Zero-amount filtering --

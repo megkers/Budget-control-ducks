@@ -185,6 +185,29 @@ const BILL_TEMPLATE = [
 const BLANK_BILL = () => ({ name: "", amt: "", day: "", note: "", category: "Other" });
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// Overview card layout switcher. Flip this constant to try alternate arrangements.
+//   "A" - original: single KPI row, full-width discretionary bar below
+//   "B" - Monthly Income + Discretionary Budget Used share a taller row with larger visualizations
+const OVERVIEW_LAYOUT = "B";
+
+// Reconstruct a "last 12 months" debt paydown window from current balances and
+// monthly principal. We have no stored history, so this assumes a steady payment.
+// Returns a stacked series where paid + remaining = total (constant) at each step.
+function buildDebtWindow(debts, monthsElapsed) {
+  const N = Math.max(1, Math.min(12, monthsElapsed || 1));
+  const P = debts.reduce((s, d) => s + (d.monthlyPrincipal || d.monthly || 0), 0);
+  const C = debts.reduce((s, d) => s + (d.balance || 0), 0);
+  const windowPaid = P * N;
+  const startTotal = C + windowPaid;
+  const series = [];
+  for (let i = 0; i <= N; i++) {
+    const paid = P * i;
+    series.push({ i, paid, remaining: startTotal - paid, total: startTotal });
+  }
+  const paidPct = startTotal > 0 ? Math.round((windowPaid / startTotal) * 100) : 0;
+  return { N, P, C, windowPaid, startTotal, series, paidPct };
+}
 // Fallback constants used only before first wizard run
 const NET_PAY = 0;
 const PAYDAY = 1;
@@ -1378,6 +1401,8 @@ const [showSearch, setShowSearch] = useState(false);
 const [debtInputs, setDebtInputs] = useState({});
 const [projMonthly, setProjectMonthly] = useState({});
 const [showFlowInfo, setShowFlowInfo] = useState(false);
+const [showDebtInfo, setShowDebtInfo] = useState(false);
+const [debtChartHover, setDebtChartHover] = useState(null);
 const [moneyFlowHovered, setMoneyFlowHovered] = useState(null);
 const [moneyFlowTooltip, setMoneyFlowTooltip] = useState(null);
 // editModal: null | "bills" | "disc" | "reserves" | "debt" | "income"
@@ -1629,20 +1654,138 @@ const renderModalOverlay = (title, content) => (
   </div>
 );
 
-const renderInfoModal = (title, content) => (
-  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
-    onClick={e => { if (e.target === e.currentTarget) setShowFlowInfo(false); }}>
-    <div style={{ background: T.surf, borderRadius: "16px 16px 0 0", width: "100%", maxWidth: "760px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-        <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{title}</span>
-        <button onClick={() => setShowFlowInfo(false)} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
-          <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>close</span>
-        </button>
+const renderInfoModal = (title, content, onClose) => {
+  const close = onClose || (() => setShowFlowInfo(false));
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
+      onClick={e => { if (e.target === e.currentTarget) close(); }}>
+      <div style={{ background: T.surf, borderRadius: "16px 16px 0 0", width: "100%", maxWidth: "760px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{title}</span>
+          <button onClick={close} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>close</span>
+          </button>
+        </div>
+        <div style={{ overflowY: "auto", padding: "16px 20px 20px", flex: 1 }}>{content}</div>
       </div>
-      <div style={{ overflowY: "auto", padding: "16px 20px 20px", flex: 1 }}>{content}</div>
     </div>
-  </div>
-);
+  );
+};
+
+// Debt Paid card detail: cumulative amount paid off over the last 12 months
+const renderDebtInfoModal = () => {
+  const kfmt = (v) => v >= 1000 ? "$" + (v / 1000).toFixed(v >= 9500 ? 0 : 1).replace(/\.0$/, "") + "k" : "$" + Math.round(v);
+  const monthsElapsed = (year - setupYear) * 12 + (month - setupMonth) + 1;
+  const dw = buildDebtWindow(debts, monthsElapsed);
+  const N = dw.N, series = dw.series, startTotal = dw.startTotal;
+  const monthLabel = (i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (N - i)); return MONTHS[d.getMonth()]; };
+
+  const rough = startTotal || 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+  const niceMax = Math.max(pow, Math.ceil(rough / pow) * pow);
+
+  const PINK = "#FF6B9D", SLATE = "#3D4657";
+  const W = 680, H = 320, padL = 56, padR = 20, padT = 20, padB = 40;
+  const x0 = padL, x1 = W - padR, y0 = padT, y1 = H - padB;
+  const xFor = (i) => x0 + (i / N) * (x1 - x0);
+  const yFor = (v) => y1 - (v / niceMax) * (y1 - y0);
+
+  const paidPts = series.map(p => xFor(p.i).toFixed(1) + " " + yFor(p.paid).toFixed(1));
+  const paidLine = "M " + paidPts.join(" L ");
+  const paidArea = "M " + xFor(0).toFixed(1) + " " + y1 + " L " + paidPts.join(" L ") + " L " + xFor(N).toFixed(1) + " " + y1 + " Z";
+  const totalY = yFor(startTotal);
+  const remainArea = "M " + xFor(0).toFixed(1) + " " + totalY.toFixed(1) + " L " + xFor(N).toFixed(1) + " " + totalY.toFixed(1) + " L " + paidPts.slice().reverse().join(" L ") + " Z";
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const xStep = Math.max(1, Math.round(N / 6));
+  const xTicks = [];
+  for (let i = 0; i <= N; i += xStep) xTicks.push(i);
+  if (xTicks[xTicks.length - 1] !== N) xTicks.push(N);
+
+  const hi = debtChartHover != null && debtChartHover <= N ? debtChartHover : null;
+
+  const legendItem = (color, label, dashed) => (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      {dashed
+        ? <svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke={color} strokeWidth="2" strokeDasharray="4 3" /></svg>
+        : <span style={{ width: "16px", height: "12px", borderRadius: "3px", background: color, display: "inline-block" }} />}
+      <span style={{ fontSize: "12px", color: T.text2 }}>{label}</span>
+    </div>
+  );
+
+  return renderInfoModal("Debt Paid (Last 12M)", (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
+        <div style={{ fontSize: "12px", color: T.text3, letterSpacing: "0.1em", textTransform: "uppercase" }}>{fmt(dw.C)} outstanding &middot; {dw.paidPct}% paid</div>
+        <div style={{ fontSize: "20px", fontWeight: "700", color: PINK }}>{kfmt(dw.windowPaid)} paid off</div>
+      </div>
+
+      <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "18px", padding: "12px 8px 8px" }}>
+        <svg viewBox={"0 0 " + W + " " + H} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", display: "block" }}>
+          <defs>
+            <linearGradient id="debtPaidArea" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={PINK} stopOpacity="0.9" />
+              <stop offset="100%" stopColor={PINK} stopOpacity="0.5" />
+            </linearGradient>
+          </defs>
+          {yTicks.map(f => {
+            const gy = yFor(f * niceMax);
+            return (
+              <g key={"y" + f}>
+                <line x1={x0} y1={gy} x2={x1} y2={gy} stroke={T.bord} strokeWidth="1" strokeOpacity={f === 0 ? 0.9 : 0.35} />
+                <text x={x0 - 8} y={gy} fill={T.text3} fontSize="11" textAnchor="end" dominantBaseline="middle">{kfmt(f * niceMax)}</text>
+              </g>
+            );
+          })}
+          {xTicks.map(i => (
+            <text key={"x" + i} x={xFor(i)} y={y1 + 20} fill={T.text3} fontSize="11" textAnchor="middle">{monthLabel(i)}</text>
+          ))}
+          <path d={remainArea} fill={SLATE} opacity="0.85" />
+          <path d={paidArea} fill="url(#debtPaidArea)" />
+          <line x1={x0} y1={totalY} x2={x1} y2={totalY} stroke={T.text2} strokeWidth="2" strokeDasharray="5 4" />
+          <path d={paidLine} fill="none" stroke={PINK} strokeWidth="2.5" strokeLinejoin="round" />
+          {series.map(p => (
+            <circle key={"d" + p.i} cx={xFor(p.i)} cy={yFor(p.paid)} r="4" fill={PINK} stroke={T.surf2} strokeWidth="1.5" />
+          ))}
+          {hi != null && (
+            <g>
+              <line x1={xFor(hi)} y1={y0} x2={xFor(hi)} y2={y1} stroke={T.text2} strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.6" />
+              <circle cx={xFor(hi)} cy={yFor(series[hi].paid)} r="5.5" fill={PINK} stroke={T.surf} strokeWidth="2" />
+              {(() => {
+                const tw = 118, th = 52;
+                const tx = Math.max(x0, Math.min(x1 - tw, xFor(hi) + 8));
+                return (
+                  <g>
+                    <rect x={tx} y={y0 + 2} width={tw} height={th} rx="7" fill={T.bg} stroke={T.bord} strokeWidth="1" />
+                    <text x={tx + 10} y={y0 + 17} fill={T.text3} fontSize="10">{monthLabel(hi)}</text>
+                    <text x={tx + 10} y={y0 + 32} fill={PINK} fontSize="12" fontWeight="700">{fmt(Math.round(series[hi].paid))} paid</text>
+                    <text x={tx + 10} y={y0 + 46} fill={T.text2} fontSize="11">{fmt(Math.round(series[hi].remaining))} left</text>
+                  </g>
+                );
+              })()}
+            </g>
+          )}
+          <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill="transparent"
+            onMouseMove={e => {
+              const r = e.currentTarget.getBoundingClientRect();
+              const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+              setDebtChartHover(Math.round(frac * N));
+            }}
+            onMouseLeave={() => setDebtChartHover(null)} />
+        </svg>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "18px", justifyContent: "center", marginTop: "16px" }}>
+        {legendItem(PINK, "Paid Off", false)}
+        {legendItem(T.text2, "Total debt (Last 12M)", true)}
+        {legendItem(SLATE, "Remaining Debt", false)}
+      </div>
+
+      <div style={{ fontSize: "11px", color: T.text3, marginTop: "14px", lineHeight: 1.5 }}>
+        Assumes a steady monthly payment across the window. Hover the line to see how much was paid off by any month.
+      </div>
+    </div>
+  ), () => { setShowDebtInfo(false); setDebtChartHover(null); });
+};
 
 // Log Spend modal
 const renderLogSpend = () => (
@@ -2132,6 +2275,182 @@ return (
       const kpiSub = { fontSize: "12px", color: T.text1, marginTop: "4px" };
       const kpiCard = { flex: "1 0 0", maxWidth: "400px", marginBottom: 0, padding: "12px 14px", boxSizing: "border-box" };
 
+      const isB = OVERVIEW_LAYOUT === "B";
+
+      const incomeCard = (
+        <Card style={{ ...kpiCard, minWidth: "340px", cursor: "pointer", display: "flex", flexDirection: isB ? "column" : "row", alignItems: isB ? "stretch" : "flex-start", gap: "12px", padding: "12px", ...(isB ? { maxWidth: "none", minHeight: "115px" } : {}) }} onClick={() => setShowFlowInfo(true)}>
+          <div style={{ flexShrink: 0, minWidth: "90px" }}>
+            <div style={kpiLbl}>Monthly Income</div>
+          </div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "stretch", minWidth: "140px", alignSelf: "stretch" }}>
+            {(() => {
+              const flowItems = [
+                { label: "Fixed", value: fixedCommitted, color: "#4A9EFF" },
+                { label: "Disc", value: discBudget, color: "#FFB347" },
+                { label: "Reserves", value: reservesTotal, color: "#C084FC" },
+                { label: "Debt", value: debtPaymentTotal, color: "#FF6B9D" },
+                { label: "Leftover", value: leftover, color: "#2C8C76" },
+              ].filter(item => item.value > 0);
+
+              if (flowItems.length === 0) return <div style={{ color: T.text2 }}>No allocation data</div>;
+
+              const svgHeight = isB ? 80 : 45;
+              const svgWidth = isB ? 260 : 200;
+              const miniNodes = [{ id: "Income" }].concat(flowItems.map(f => ({ id: f.label })));
+              const miniLinks = flowItems.map(f => ({ source: "Income", target: f.label, value: f.value }));
+              const miniColorMap = { Income: "#7ED4A0" };
+              flowItems.forEach(f => { miniColorMap[f.label] = f.color; });
+
+              const miniLayout = d3Sankey()
+                .nodeId(d => d.id)
+                .nodeWidth(isB ? 14 : 10)
+                .nodePadding(isB ? 6 : 3)
+                .extent([[4, 2], [svgWidth - 4, svgHeight - 2]])
+                ({ nodes: miniNodes.map(d => ({ ...d })), links: miniLinks.map(d => ({ ...d })) });
+
+              // The Income "node" is rendered as an HTML block (below) so its amount label
+              // stays a real, fixed pixel size. Collapse its SVG node to the left edge so
+              // the flow links originate flush against that block.
+              const incomeAmtStr = fmt(totalIncomeCfg);
+              const incomeNode = miniLayout.nodes.find(n => n.id === "Income");
+              if (incomeNode) { incomeNode.x0 = 0; incomeNode.x1 = 0; }
+
+              const miniLinkPath = sankeyLinkHorizontal();
+
+              return (
+                <div style={{ position: "relative", width: "100%", flex: 1, minHeight: svgHeight + "px", display: "flex", alignItems: "stretch", gap: "6px" }}>
+                  <div style={{ background: miniColorMap.Income, borderRadius: "2px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: isB ? "0 14px" : "0 8px", minWidth: isB ? "70px" : "48px" }}>
+                    <div style={{ ...(isB ? kpiAmt : { fontSize: "12px", fontWeight: "700", lineHeight: 1 }), color: T.bg, whiteSpace: "nowrap" }}>{incomeAmtStr}</div>
+                  </div>
+                  <svg viewBox={"0 0 " + svgWidth + " " + svgHeight} preserveAspectRatio="none" style={{ flex: 1, minWidth: 0, height: "100%", cursor: "pointer" }}>
+                    {miniLayout.links.map((link, i) => {
+                      const isHovered = moneyFlowHovered === link.target.id;
+                      const opacity = moneyFlowHovered && !isHovered ? 0.14 : (isHovered ? 0.9 : 0.32);
+                      return (
+                        <path
+                          key={"ml-" + i}
+                          d={miniLinkPath(link)}
+                          fill="none"
+                          stroke={miniColorMap[link.target.id]}
+                          strokeWidth={Math.max(4, link.width)}
+                          opacity={opacity}
+                          style={{ transition: "opacity 0.2s" }}
+                          onMouseEnter={() => setMoneyFlowHovered(link.target.id)}
+                          onMouseLeave={() => setMoneyFlowHovered(null)}
+                        />
+                      );
+                    })}
+                    {miniLayout.nodes.filter(node => node.id !== "Income").map(node => {
+                      const h = node.y1 - node.y0;
+                      const w = node.x1 - node.x0;
+                      const isHovered = moneyFlowHovered === node.id;
+                      return (
+                        <rect
+                          key={node.id}
+                          x={node.x0}
+                          y={node.y0}
+                          width={w}
+                          height={h}
+                          rx={2}
+                          fill={miniColorMap[node.id]}
+                          opacity={isHovered ? 0.95 : 0.9}
+                          style={{ transition: "opacity 0.2s" }}
+                          onMouseEnter={() => {
+                            setMoneyFlowHovered(node.id);
+                            setMoneyFlowTooltip({ x: node.x1 + 8, y: node.y0 - 4, label: node.id, value: flowItems.find(f => f.label === node.id)?.value || 0 });
+                          }}
+                          onMouseLeave={() => {
+                            setMoneyFlowHovered(null);
+                            setMoneyFlowTooltip(null);
+                          }}
+                        />
+                      );
+                    })}
+                  </svg>
+
+                  {moneyFlowTooltip && (
+                    <div style={{
+                      position: "absolute",
+                      left: moneyFlowTooltip.x,
+                      top: moneyFlowTooltip.y,
+                      background: T.bg,
+                      border: "1px solid " + T.bord,
+                      borderRadius: "8px",
+                      padding: "6px 10px",
+                      fontSize: "11px",
+                      color: T.text1,
+                      whiteSpace: "nowrap",
+                      pointerEvents: "none",
+                      zIndex: 10,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
+                    }}>
+                      <div style={{ fontWeight: "700", color: T.blue }}>{moneyFlowTooltip.label}</div>
+                      <div style={{ marginTop: "2px" }}>{fmt(moneyFlowTooltip.value)}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </Card>
+      );
+
+      // Compact discretionary card (uses the sizing formerly on Debt Paid) - sits in the first row.
+      const discCard = (
+        <Card border={over ? T.red : T.bord} style={{ ...kpiCard, minWidth: "280px", maxWidth: "none" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <div style={kpiLbl}>Discretionary Budget Used</div>
+            <span style={{ fontSize: "12px", color: T.text2 }}>{Math.round(discPct)}%</span>
+          </div>
+          <div style={{ background: T.bord, borderRadius: "4px", height: "8px", marginBottom: "10px" }}>
+            <div style={{ height: "100%", width: discPct + "%", background: over ? T.red : T.green, borderRadius: "4px" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: "12px", color: T.text2, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "2px" }}>Spent</div>
+              <div style={{ fontSize: "15px", fontWeight: "700", color: over ? T.red : T.green }}>{fmt(discSpent)}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: "12px", color: T.text2, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "2px" }}>{over ? "Over Budget" : "Remaining"}</div>
+              <div style={{ fontSize: "15px", fontWeight: "700", color: over ? T.red : discLeft < 200 ? "#FFB347" : T.green }}>{fmt(Math.abs(discLeft))}</div>
+            </div>
+          </div>
+        </Card>
+      );
+
+      // Debt Paid card (uses the taller sizing formerly on Discretionary) - pairs with Monthly Income.
+      const debtCard = debts.length > 0 ? (() => {
+        const monthsElapsed = (year - setupYear) * 12 + (month - setupMonth) + 1;
+        const dw = buildDebtWindow(debts, monthsElapsed);
+        const PINK = "#FF6B9D";
+        const w = 160, h = 66;
+        const niceMax = (dw.startTotal || 1) * 1.1;
+        const xF = (i) => (i / dw.N) * w;
+        const yF = (v) => h - (v / niceMax) * h;
+        const paidPts = dw.series.map(p => xF(p.i).toFixed(1) + " " + yF(p.paid).toFixed(1));
+        const paidArea = "M 0 " + h + " L " + paidPts.join(" L ") + " L " + w + " " + h + " Z";
+        const paidLine = "M " + paidPts.join(" L ");
+        const totalY = yF(dw.startTotal);
+        return (
+          <Card style={{ marginBottom: 0, padding: "14px 16px", minWidth: "340px", cursor: "pointer", ...(isB ? { flex: "1 0 0", minHeight: "115px", display: "flex", flexDirection: "column" } : {}) }} onClick={() => setShowDebtInfo(true)}>
+            <div style={{ ...kpiLbl, marginBottom: "8px", whiteSpace: "nowrap" }}>Debt Paid (Last 12M)</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "stretch", gap: "14px", ...(isB ? { flex: 1 } : {}) }}>
+              <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ ...kpiAmt, color: PINK }}>{dw.paidPct}% paid</div>
+                <div style={{ ...kpiSub, whiteSpace: "nowrap" }}>{fmt(dw.C)} outstanding</div>
+              </div>
+              <div style={{ flex: 1, minWidth: "110px", alignSelf: "stretch", display: "flex", minHeight: "56px" }}>
+                <svg viewBox={"0 0 " + w + " " + h} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
+                  <path d={paidArea} fill={PINK} opacity="0.85" />
+                  <path d={paidLine} fill="none" stroke={PINK} strokeWidth="2" />
+                  <line x1="0" y1={totalY} x2={w} y2={totalY} stroke={T.text2} strokeWidth="1.5" strokeDasharray="4 3" />
+                </svg>
+              </div>
+            </div>
+          </Card>
+        );
+      })() : null;
+
       return (
         <div style={{ marginBottom: "8px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "stretch", marginBottom: "8px" }}>
@@ -2140,7 +2459,7 @@ return (
               <div style={kpiLbl}>Fixed & Committed</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px", marginTop: "6px" }}>
                 <div>
-                  <div style={{ ...kpiAmt, color: T.text1 }}>{fmt(fixedCommitted)}</div>
+                  <div style={{ ...kpiAmt, color: "#B8A9FF" }}>{fmt(fixedCommitted)}</div>
                   <div style={{ ...kpiSub, whiteSpace: "nowrap" }}>autopays this month</div>
                 </div>
                 {fixedBillItems.length > 0 && (
@@ -2156,7 +2475,7 @@ return (
               </div>
             </Card>
 
-            <Card style={{ ...kpiCard, minWidth: "220px" }}>
+            <Card style={{ ...kpiCard, minWidth: "280px" }}>
               <div style={{ ...kpiLbl, whiteSpace: "nowrap" }}>{"Banked Since " + MONTHS[setupMonth] + " " + (setupYear - 2000)}</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
                 <div>
@@ -2167,168 +2486,29 @@ return (
               </div>
             </Card>
 
-            <Card style={{ ...kpiCard, minWidth: "320px", cursor: "pointer", display: "flex", flexDirection: "row", alignItems: "flex-start", gap: "12px", padding: "12px" }} onClick={() => setShowFlowInfo(true)}>
-              <div style={{ display: "flex", flexDirection: "column", flexShrink: 0, minWidth: "90px" }}>
-                <div style={kpiLbl}>Monthly Income</div>
-                <div style={{ ...kpiAmt, color: T.blue, marginTop: "6px" }}>{fmt(totalIncomeCfg)}</div>
-              </div>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "stretch", minWidth: "140px", alignSelf: "stretch" }}>
-                {(() => {
-                  const flowItems = [
-                    { label: "Fixed", value: fixedCommitted, color: "#3D6CB4" },
-                    { label: "Disc", value: discBudget, color: "#C28A3A" },
-                    { label: "Reserves", value: reservesTotal, color: "#8B7CFF" },
-                    { label: "Debt", value: debtPaymentTotal, color: "#C25450" },
-                    { label: "Leftover", value: leftover, color: "#2C8C76" },
-                  ].filter(item => item.value > 0);
+            {!isB && incomeCard}
 
-                  if (flowItems.length === 0) return <div style={{ color: T.text2 }}>No allocation data</div>;
-
-                  const svgHeight = 45;
-                  const svgWidth = 200;
-                  const miniNodes = [{ id: "Income" }].concat(flowItems.map(f => ({ id: f.label })));
-                  const miniLinks = flowItems.map(f => ({ source: "Income", target: f.label, value: f.value }));
-                  const miniColorMap = { Income: "#C2C9D2" };
-                  flowItems.forEach(f => { miniColorMap[f.label] = f.color; });
-
-                  const miniLayout = d3Sankey()
-                    .nodeId(d => d.id)
-                    .nodeWidth(10)
-                    .nodePadding(3)
-                    .extent([[4, 2], [svgWidth - 4, svgHeight - 2]])
-                    ({ nodes: miniNodes.map(d => ({ ...d })), links: miniLinks.map(d => ({ ...d })) });
-
-                  const miniLinkPath = sankeyLinkHorizontal();
-
-                  return (
-                    <div style={{ position: "relative", width: "100%", flex: 1, minHeight: svgHeight + "px" }}>
-                      <svg viewBox={"0 0 " + svgWidth + " " + svgHeight} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", cursor: "pointer" }}>
-                        {miniLayout.links.map((link, i) => {
-                          const isHovered = moneyFlowHovered === link.target.id;
-                          const opacity = moneyFlowHovered && !isHovered ? 0.14 : (isHovered ? 0.9 : 0.32);
-                          return (
-                            <path
-                              key={"ml-" + i}
-                              d={miniLinkPath(link)}
-                              fill="none"
-                              stroke={miniColorMap[link.target.id]}
-                              strokeWidth={Math.max(4, link.width)}
-                              opacity={opacity}
-                              style={{ transition: "opacity 0.2s" }}
-                              onMouseEnter={() => setMoneyFlowHovered(link.target.id)}
-                              onMouseLeave={() => setMoneyFlowHovered(null)}
-                            />
-                          );
-                        })}
-                        {miniLayout.nodes.map(node => {
-                          const h = node.y1 - node.y0;
-                          const isHovered = moneyFlowHovered === node.id;
-                          return (
-                            <rect
-                              key={node.id}
-                              x={node.x0}
-                              y={node.y0}
-                              width={node.x1 - node.x0}
-                              height={h}
-                              rx={Math.min(4, h / 2)}
-                              fill={miniColorMap[node.id]}
-                              opacity={node.id === "Income" ? 0.9 : (isHovered ? 0.95 : 0.9)}
-                              style={{ transition: "opacity 0.2s" }}
-                              onMouseEnter={() => {
-                                if (node.id !== "Income") {
-                                  setMoneyFlowHovered(node.id);
-                                  setMoneyFlowTooltip({ x: node.x1 + 8, y: node.y0 - 4, label: node.id, value: flowItems.find(f => f.label === node.id)?.value || 0 });
-                                }
-                              }}
-                              onMouseLeave={() => {
-                                setMoneyFlowHovered(null);
-                                setMoneyFlowTooltip(null);
-                              }}
-                            />
-                          );
-                        })}
-                      </svg>
-
-                      {moneyFlowTooltip && (
-                        <div style={{
-                          position: "absolute",
-                          left: moneyFlowTooltip.x,
-                          top: moneyFlowTooltip.y,
-                          background: T.bg,
-                          border: "1px solid " + T.bord,
-                          borderRadius: "8px",
-                          padding: "6px 10px",
-                          fontSize: "11px",
-                          color: T.text1,
-                          whiteSpace: "nowrap",
-                          pointerEvents: "none",
-                          zIndex: 10,
-                          boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
-                        }}>
-                          <div style={{ fontWeight: "700", color: T.blue }}>{moneyFlowTooltip.label}</div>
-                          <div style={{ marginTop: "2px" }}>{fmt(moneyFlowTooltip.value)}</div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-            </Card>
-
-            <Card border={isPayday ? T.green : T.bord} style={{ ...kpiCard, minWidth: "220px" }}>
+            <Card border={isPayday ? T.green : T.bord} style={{ ...kpiCard, minWidth: "280px" }}>
               <div style={kpiLbl}>Payday</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
                 <div>
-                  <div style={{ ...kpiAmt, color: isPayday ? T.green : T.text1 }}>{isPayday ? "Today" : daysUntilPayday + "d"}</div>
+                  <div style={{ ...kpiAmt, color: isPayday ? T.green : "#FFB347" }}>{isPayday ? "Today" : daysUntilPayday + "d"}</div>
                   <div style={{ ...kpiSub, whiteSpace: "nowrap" }}>{isPayday ? fmt(totalIncomeCfg) + " incoming" : "Est. " + MONTHS[nextPayMonthIdx] + " " + ordinal(primaryPayday)}</div>
                 </div>
-                <span className="material-symbols-outlined" style={{ fontSize: "32px", color: isPayday ? T.green : T.text2, opacity: 0.6, flexShrink: 0 }}>calendar_clock</span>
+                <span className="material-symbols-outlined" style={{ fontSize: "32px", color: isPayday ? T.green : "#FFB347", opacity: 0.6, flexShrink: 0 }}>calendar_clock</span>
               </div>
             </Card>
 
-            {debts.length > 0 && (() => {
-              const totalDebt = debts.reduce((s,d) => s + d.balance, 0);
-              const monthsElapsed = (year - setupYear) * 12 + (month - setupMonth) + 1;
-              const paidYTD = debts.reduce((s,d) => s + (d.monthly * Math.max(0, monthsElapsed)), 0);
-              const denom = totalDebt + paidYTD;
-              const paidPct = denom > 0 ? Math.round((paidYTD / denom) * 100) : 0;
-              return (
-                <Card style={{ ...kpiCard, minWidth: "250px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "stretch", gap: "10px" }}>
-                    <div>
-                      <div style={kpiLbl}>Debt Paid</div>
-                      <div style={{ ...kpiAmt, color: "#B8A9FF", marginTop: "6px" }}>{paidPct}% paid</div>
-                      <div style={kpiSub}>{fmt(totalDebt)} outstanding</div>
-                    </div>
-                    <div style={{ position: "relative", width: "20px", flexShrink: 0, alignSelf: "stretch", border: "1px solid #B8A9FF", borderRadius: "3px", background: T.text3, overflow: "hidden", minHeight: "54px" }}>
-                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: paidPct + "%", background: "#B8A9FF", borderRadius: "3px" }} />
-                    </div>
-                  </div>
-                </Card>
-              );
-            })()}
+            {discCard}
 
           </div>
 
-          <Card border={over ? T.red : T.bord} style={{ marginBottom: 0, padding: "14px 16px", minWidth: "300px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <div style={kpiLbl}>Discretionary Budget Used</div>
-              <span style={{ fontSize: "12px", color: T.text2 }}>{Math.round(discPct)}%</span>
+          {isB ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "stretch" }}>
+              {incomeCard}
+              {debtCard}
             </div>
-            <div style={{ background: T.bord, borderRadius: "4px", height: "8px", marginBottom: "10px" }}>
-              <div style={{ height: "100%", width: discPct + "%", background: over ? T.red : T.green, borderRadius: "4px" }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontSize: "12px", color: T.text2, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "2px" }}>Spent</div>
-                <div style={{ fontSize: "15px", fontWeight: "700", color: over ? T.red : T.green }}>{fmt(discSpent)}</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "12px", color: T.text2, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "2px" }}>{over ? "Over Budget" : "Remaining"}</div>
-                <div style={{ fontSize: "15px", fontWeight: "700", color: over ? T.red : discLeft < 200 ? "#FFB347" : T.green }}>{fmt(Math.abs(discLeft))}</div>
-              </div>
-            </div>
-          </Card>
+          ) : debtCard}
         </div>
       );
     })()}
@@ -3652,6 +3832,7 @@ return (
     );
   })()
 ))}
+{showDebtInfo && renderDebtInfoModal()}
 {editModal === "logspend"  && renderLogSpend()}
 {editModal === "bills"     && renderEditBills()}
 {editModal === "disc"      && renderEditDisc()}

@@ -8,6 +8,9 @@ dist/
 # OS cruft
 .DS_Store
 
+# Test artifact (regenerated copy of src/App.jsx for the python suites)
+file.jsx
+
 # Private working docs (keep out of the public repo)
 CLAUDE.md
 session_handoff.md
