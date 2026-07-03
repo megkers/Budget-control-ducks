@@ -1,0 +1,45 @@
+name: Build and Sync to Portfolio
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout budget-controller
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Checkout my-portfolio
+        uses: actions/checkout@v6
+        with:
+          repository: megkers/my-portfolio
+          token: ${{ secrets.PORTFOLIO_PAT }}
+          path: my-portfolio
+
+      - name: Copy build output into portfolio
+        run: |
+          rm -rf my-portfolio/budget-controller
+          mkdir -p my-portfolio/budget-controller
+          cp -r ./dist/* my-portfolio/budget-controller/
+
+      - name: Open pull request on my-portfolio
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.PORTFOLIO_PAT }}
+          path: my-portfolio
+          commit-message: "Update budget-controller build"
+          branch: budget-controller-update
+          title: "Update budget-controller from latest build"
+          body: "Automated update from Budget-control-ducks main branch."
