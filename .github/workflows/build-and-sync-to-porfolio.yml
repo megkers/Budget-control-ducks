@@ -28,7 +28,7 @@ jobs:
           token: ${{ secrets.PORTFOLIO_PAT }}
           path: my-portfolio
 
-      - name: Copy build output into portfolio
+      - name: Copy build output into portfolio.
         run: |
           rm -rf my-portfolio/budget-controller
           mkdir -p my-portfolio/budget-controller
