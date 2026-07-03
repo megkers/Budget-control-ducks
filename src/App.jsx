@@ -1405,6 +1405,7 @@ const [showDebtInfo, setShowDebtInfo] = useState(false);
 const [debtChartHover, setDebtChartHover] = useState(null);
 const [moneyFlowHovered, setMoneyFlowHovered] = useState(null);
 const [moneyFlowTooltip, setMoneyFlowTooltip] = useState(null);
+const [flowLinkHover, setFlowLinkHover] = useState(null);
 // editModal: null | "bills" | "disc" | "reserves" | "debt" | "income"
 const [editModal, setEditModal] = useState(null);
 // Local edit state - populated when a modal opens
@@ -3723,7 +3724,7 @@ return (
       { key: "reserves", label: "Reserves", value: reservesTotal, color: "#B8A9FF", items: buckets.filter(b => RESERVE_IDS_LIST.includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
     ].filter(group => group.value > 0);
     if (debtPaymentTotal > 0) {
-      categories.push({ key: "debt", label: "Debt", value: debtPaymentTotal, color: "#FF6B9D", items: debts.filter(d => (d.monthly || 0) > 0).map(d => ({ label: d.name || "Debt", value: d.monthly, color: "#FF6B9D" })) });
+      categories.push({ key: "debt", label: "Debt Repayment", value: debtPaymentTotal, color: "#FF6B9D", items: debts.filter(d => (d.monthly || 0) > 0).map(d => ({ label: d.name || "Debt", value: d.monthly, color: "#FF6B9D" })) });
     }
     if (leftover > 0) {
       categories.push({ key: "leftover", label: "Leftover", value: leftover, color: T.green, items: [{ label: "Leftover cash", value: leftover, color: T.green }] });
@@ -3734,7 +3735,7 @@ return (
     const meta = {}; // id -> { label, value, color }
     const addNode = (id, label, value, color) => { sankeyNodes.push({ id }); meta[id] = { label, value, color }; };
 
-    addNode("Income", "Income", totalIncomeCfg, T.blue);
+    addNode("Income", "Income", totalIncomeCfg, "#7ED4A0");
     categories.forEach(cat => {
       const catId = "cat-" + cat.key;
       addNode(catId, cat.label, cat.value, cat.color);
@@ -3768,7 +3769,8 @@ return (
     const colorMap = {};
     Object.keys(meta).forEach(id => { colorMap[id] = meta[id].color; });
 
-    const viewWidth = 720;
+    const viewWidth = 760;
+    const labelPad = 150; // room on the right so leaf labels are not clipped
     const leafCount = categories.reduce((s, c) => s + c.items.length, 0);
     const viewHeight = Math.max(300, leafCount * 32 + 60);
     const nodeWidth = 16;
@@ -3778,7 +3780,7 @@ return (
       .nodeId(d => d.id)
       .nodeWidth(nodeWidth)
       .nodePadding(nodePadding)
-      .extent([[18, 24], [viewWidth - 18, viewHeight - 24]])
+      .extent([[18, 24], [viewWidth - labelPad, viewHeight - 24]])
       ({ nodes: sankeyNodes.map(d => ({ ...d })), links: sankeyLinks.map(d => ({ ...d })) });
 
     const maxDepth = layout.nodes.reduce((m, n) => Math.max(m, n.depth), 0);
@@ -3786,24 +3788,25 @@ return (
     const valueForId = (id) => (meta[id] && meta[id].value) || 0;
 
     const linkPath = sankeyLinkHorizontal();
+    const hoverLink = flowLinkHover != null ? layout.links[flowLinkHover] : null;
+    const hoverEnds = hoverLink ? [hoverLink.source.id, hoverLink.target.id] : null;
 
     return (
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
-          <div>
-            <div style={{ fontSize: "12px", color: T.text3, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "6px" }}>Monthly Budget Flow</div>
-            <div style={{ fontSize: "22px", fontWeight: "700", color: T.text1 }}>{fmt(totalIncomeCfg)}</div>
-          </div>
-          <div style={{ minWidth: "160px", textAlign: "right" }}>
-            <div style={{ fontSize: "12px", color: T.text2, marginBottom: "6px" }}>Debt payments</div>
-            <div style={{ fontSize: "18px", fontWeight: "700", color: "#FF6B9D" }}>{fmt(debtPaymentTotal)}</div>
-          </div>
+        <div style={{ marginBottom: "18px" }}>
+          <div style={{ fontSize: "12px", color: T.text3, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "6px" }}>Monthly Budget Flow</div>
+          <div style={{ fontSize: "22px", fontWeight: "700", color: T.text1 }}>{fmt(totalIncomeCfg)}</div>
         </div>
 
         <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "18px", padding: "16px", overflowX: "auto" }}>
-          <svg width="100%" height={viewHeight} viewBox={`0 0 ${viewWidth} ${viewHeight}`} style={{ minWidth: "640px", display: "block" }}>
+          <svg width={viewWidth} height={viewHeight} viewBox={`0 0 ${viewWidth} ${viewHeight}`} style={{ display: "block", maxWidth: "100%" }}>
             {layout.links.map((link, i) => (
-              <path key={"link-" + i} d={linkPath(link)} fill="none" stroke={colorMap[link.source.id] || T.text3} strokeWidth={Math.max(4, link.width)} strokeOpacity={0.45} />
+              <path key={"link-" + i} d={linkPath(link)} fill="none" stroke={colorMap[link.source.id] || T.text3} strokeWidth={Math.max(4, link.width)}
+                strokeOpacity={flowLinkHover != null ? (flowLinkHover === i ? 0.85 : 0.06) : 0.45}
+                style={{ transition: "stroke-opacity 0.15s", cursor: "pointer" }}
+                pointerEvents="stroke"
+                onMouseEnter={() => setFlowLinkHover(i)}
+                onMouseLeave={() => setFlowLinkHover(null)} />
             ))}
             {layout.nodes.map(node => {
               const label = labelForId(node.id);
@@ -3812,27 +3815,46 @@ return (
               const col = colorMap[node.id] || T.text3;
               const isLeft = node.depth === 0;
               const isRight = node.depth === maxDepth;
+              const dim = hoverEnds && hoverEnds.indexOf(node.id) === -1;
               return (
-                <g key={node.id}>
+                <g key={node.id} style={{ opacity: dim ? 0.2 : 1, transition: "opacity 0.15s", pointerEvents: "none" }}>
                   <rect x={node.x0} y={node.y0} width={node.x1 - node.x0} height={h} rx={Math.min(6, h / 2)} fill={col} opacity={0.85} />
                   {isLeft && h > 18 && (
                     <>
-                      <text x={node.x0 + nodeWidth + 8} y={node.y0 + h / 2 - 7} fill={T.text2} fontSize="10" fontWeight="700" dominantBaseline="middle">{label}</text>
+                      <text x={node.x0 + nodeWidth + 8} y={node.y0 + h / 2 - 7} fill={T.text1} fontSize="10" fontWeight="700" dominantBaseline="middle">{label}</text>
                       <text x={node.x0 + nodeWidth + 8} y={node.y0 + h / 2 + 9} fill={T.text1} fontSize="14" fontWeight="700" dominantBaseline="middle">{fmt(val)}</text>
                     </>
                   )}
                   {!isLeft && !isRight && h > 14 && (
                     <>
-                      <text x={node.x0 + nodeWidth + 8} y={node.y0 + Math.min(16, h / 2)} fill={col} fontSize="10" fontWeight="700">{label}</text>
+                      <text x={node.x0 + nodeWidth + 8} y={node.y0 + Math.min(16, h / 2)} fill={T.text1} fontSize="10" fontWeight="700">{label}</text>
                       {h > 30 && <text x={node.x0 + nodeWidth + 8} y={node.y0 + Math.min(32, h / 2 + 12)} fill={T.text1} fontSize="11" fontWeight="700">{fmt(val)}</text>}
                     </>
                   )}
                   {isRight && (
-                    <text x={node.x0 - 6} y={node.y0 + h / 2} fill={T.text1} fontSize="9" fontWeight="700" textAnchor="end" dominantBaseline="middle">{label}</text>
+                    <text x={node.x1 + 6} y={node.y0 + h / 2} fill={T.text1} fontSize="9" fontWeight="700" textAnchor="start" dominantBaseline="middle">{label}</text>
                   )}
                 </g>
               );
             })}
+            {hoverLink && (() => {
+              const val = hoverLink.value;
+              const pct = Math.round((val / total) * 100);
+              const flow = labelForId(hoverLink.source.id) + " -> " + labelForId(hoverLink.target.id);
+              const tw = Math.max(160, flow.length * 6.6 + 24), th = 46;
+              const midX = (hoverLink.source.x1 + hoverLink.target.x0) / 2;
+              const midY = (hoverLink.y0 + hoverLink.y1) / 2;
+              let tx = Math.max(4, Math.min(viewWidth - tw - 4, midX - tw / 2));
+              let ty = midY - th - 8;
+              if (ty < 4) ty = midY + 8;
+              return (
+                <g style={{ pointerEvents: "none" }}>
+                  <rect x={tx} y={ty} width={tw} height={th} rx="8" fill={T.bg} stroke={T.bord} strokeWidth="1" />
+                  <text x={tx + 12} y={ty + 18} fill={T.text1} fontSize="12" fontWeight="700">{flow}</text>
+                  <text x={tx + 12} y={ty + 34} fill={T.text2} fontSize="11">{fmt(val)} ({pct}% of income)</text>
+                </g>
+              );
+            })()}
           </svg>
         </div>
 
