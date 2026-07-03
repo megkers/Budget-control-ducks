@@ -1,11 +1,11 @@
 """
 Math audit test suite for budget-v7.jsx
 Validates every calculation path against known scenarios.
-Run: python3 math_audit.py file.jsx
+Run: python3 math_audit.py [path/to/App.jsx]   (defaults to src/App.jsx)
 """
 import sys, json, math
 
-with open(sys.argv[1] if len(sys.argv) > 1 else 'file.jsx', 'rb') as f:
+with open(sys.argv[1] if len(sys.argv) > 1 else 'src/App.jsx', 'rb') as f:
     code = f.read().decode('utf-8')
 
 PASS = 0

@@ -1677,8 +1677,7 @@ const renderInfoModal = (title, content, onClose) => {
 const renderDebtInfoModal = () => {
   const kfmt = (v) => v >= 1000 ? "$" + (v / 1000).toFixed(v >= 9500 ? 0 : 1).replace(/\.0$/, "") + "k" : "$" + Math.round(v);
   const monthsElapsed = (year - setupYear) * 12 + (month - setupMonth) + 1;
-  const dw = buildDebtWindow(debts, monthsElapsed);
-  const N = dw.N, series = dw.series, startTotal = dw.startTotal;
+  const { N, series, startTotal, C, windowPaid, paidPct } = buildDebtWindow(debts, monthsElapsed);
   const monthLabel = (i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (N - i)); return MONTHS[d.getMonth()]; };
 
   const rough = startTotal || 1;
@@ -1716,8 +1715,8 @@ const renderDebtInfoModal = () => {
   return renderInfoModal("Debt Paid (Last 12M)", (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
-        <div style={{ fontSize: "12px", color: T.text3, letterSpacing: "0.1em", textTransform: "uppercase" }}>{fmt(dw.C)} outstanding &middot; {dw.paidPct}% paid</div>
-        <div style={{ fontSize: "20px", fontWeight: "700", color: PINK }}>{kfmt(dw.windowPaid)} paid off</div>
+        <div style={{ fontSize: "12px", color: T.text3, letterSpacing: "0.1em", textTransform: "uppercase" }}>{fmt(C)} outstanding &middot; {paidPct}% paid</div>
+        <div style={{ fontSize: "20px", fontWeight: "700", color: PINK }}>{kfmt(windowPaid)} paid off</div>
       </div>
 
       <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "18px", padding: "12px 8px 8px" }}>

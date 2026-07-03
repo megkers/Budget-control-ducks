@@ -1,4 +1,4 @@
-with open('file.jsx','rb') as f:
+with open('src/App.jsx','rb') as f:
     b = f.read()
 code = b.decode('utf-8')
 checks = [
