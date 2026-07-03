@@ -3705,14 +3705,25 @@ return (
 
 {showFlowInfo && renderInfoModal("Money Flow", (
   (() => {
+    // Self-contained so the modal does not depend on the Overview tab's locals.
+    const bills = buckets.find(b => b.id === "bills");
+    const fixedCommitted = (bills ? bills.amount : 0) || 0;
+    const fixedBillItems = ((bills && bills.items) || []).filter(i => i.amt > 0);
+    const discIds = ["bill001","bill002","bill003","bill004","bill005"];
+    const RESERVE_IDS_LIST = ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"];
+    const discBudget = buckets.filter(b => discIds.includes(b.id) && b.amount > 0).reduce((s, b) => s + b.amount, 0);
+    const reservesTotal = RESERVE_IDS_LIST.reduce((s, id) => { const b = buckets.find(x => x.id === id); return s + (b ? b.amount : 0); }, 0);
+    const debtPaymentTotal = debts.reduce((s, d) => s + (d.monthly || 0), 0);
+    const leftover = Math.max(0, totalIncomeCfg - fixedCommitted - discBudget - reservesTotal - debtPaymentTotal);
     const total = totalIncomeCfg || 1;
+
     const categories = [
-      { key: "fixed", label: "Fixed", value: fixedCommitted, color: T.blue, items: fixedBillItems.map(item => ({ label: item.name, value: item.amt, color: T.blue })) },
-      { key: "discretionary", label: "Discretionary", value: discBudget, color: "#FFB347", items: buckets.filter(b => ["bill001","bill002","bill003","bill004","bill005"].includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
-      { key: "reserves", label: "Reserves", value: reservesTotal, color: "#B8A9FF", items: buckets.filter(b => ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"].includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
+      { key: "fixed", label: "Fixed", value: fixedCommitted, color: T.blue, items: fixedBillItems.map(item => ({ label: item.name, value: item.amt, color: T.blue, group: item.category || "Other" })) },
+      { key: "discretionary", label: "Discretionary", value: discBudget, color: "#FFB347", items: buckets.filter(b => discIds.includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
+      { key: "reserves", label: "Reserves", value: reservesTotal, color: "#B8A9FF", items: buckets.filter(b => RESERVE_IDS_LIST.includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
     ].filter(group => group.value > 0);
     if (debtPaymentTotal > 0) {
-      categories.push({ key: "debt", label: "Debt", value: debtPaymentTotal, color: T.red, items: [{ label: "Debt payments", value: debtPaymentTotal, color: T.red }] });
+      categories.push({ key: "debt", label: "Debt", value: debtPaymentTotal, color: T.red, items: debts.filter(d => (d.monthly || 0) > 0).map(d => ({ label: d.name || "Debt", value: d.monthly, color: T.red })) });
     }
     if (leftover > 0) {
       categories.push({ key: "leftover", label: "Leftover", value: leftover, color: T.green, items: [{ label: "Leftover cash", value: leftover, color: T.green }] });
@@ -3720,24 +3731,47 @@ return (
 
     const sankeyNodes = [];
     const sankeyLinks = [];
-    const colorMap = {};
-    sankeyNodes.push({ id: "Income" });
-    colorMap["Income"] = T.blue;
-    categories.forEach(cat => {
-      sankeyNodes.push({ id: "cat-" + cat.key });
-      colorMap["cat-" + cat.key] = cat.color;
-      sankeyLinks.push({ source: "Income", target: "cat-" + cat.key, value: cat.value });
-      cat.items.forEach((item, i) => {
-        const bucketId = "bucket-" + cat.key + "-" + i;
-        sankeyNodes.push({ id: bucketId });
-        colorMap[bucketId] = item.color;
-        sankeyLinks.push({ source: "cat-" + cat.key, target: bucketId, value: item.value });
-      });
-    });
+    const meta = {}; // id -> { label, value, color }
+    const addNode = (id, label, value, color) => { sankeyNodes.push({ id }); meta[id] = { label, value, color }; };
 
-    const viewWidth = 640;
-    const viewHeight = Math.max(300, categories.reduce((s, c) => s + c.items.length, 0) * 32 + 60);
-    const nodeWidth = 18;
+    addNode("Income", "Income", totalIncomeCfg, T.blue);
+    categories.forEach(cat => {
+      const catId = "cat-" + cat.key;
+      addNode(catId, cat.label, cat.value, cat.color);
+      sankeyLinks.push({ source: "Income", target: catId, value: cat.value });
+
+      if (cat.key === "fixed" && cat.items.length > 0) {
+        // Extra level: group fixed bills by their bill category (Housing, Utilities, ...).
+        const order = [];
+        const groups = {};
+        cat.items.forEach(it => { const g = it.group || "Other"; if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(it); });
+        order.forEach((g, gi) => {
+          const gItems = groups[g];
+          const gVal = gItems.reduce((s, x) => s + x.value, 0);
+          const subId = "sub-fixed-" + gi;
+          addNode(subId, g, gVal, cat.color);
+          sankeyLinks.push({ source: catId, target: subId, value: gVal });
+          gItems.forEach((it, ii) => {
+            const leafId = "leaf-fixed-" + gi + "-" + ii;
+            addNode(leafId, it.label, it.value, it.color);
+            sankeyLinks.push({ source: subId, target: leafId, value: it.value });
+          });
+        });
+      } else {
+        cat.items.forEach((it, ii) => {
+          const leafId = "leaf-" + cat.key + "-" + ii;
+          addNode(leafId, it.label, it.value, it.color);
+          sankeyLinks.push({ source: catId, target: leafId, value: it.value });
+        });
+      }
+    });
+    const colorMap = {};
+    Object.keys(meta).forEach(id => { colorMap[id] = meta[id].color; });
+
+    const viewWidth = 720;
+    const leafCount = categories.reduce((s, c) => s + c.items.length, 0);
+    const viewHeight = Math.max(300, leafCount * 32 + 60);
+    const nodeWidth = 16;
     const nodePadding = 14;
 
     const layout = d3Sankey()
@@ -3747,26 +3781,9 @@ return (
       .extent([[18, 24], [viewWidth - 18, viewHeight - 24]])
       ({ nodes: sankeyNodes.map(d => ({ ...d })), links: sankeyLinks.map(d => ({ ...d })) });
 
-    const labelForId = (id) => {
-      if (id === "Income") return "Income";
-      for (const cat of categories) {
-        if (id === "cat-" + cat.key) return cat.label;
-        for (let i = 0; i < cat.items.length; i++) {
-          if (id === "bucket-" + cat.key + "-" + i) return cat.items[i].label;
-        }
-      }
-      return "";
-    };
-    const valueForId = (id) => {
-      if (id === "Income") return totalIncomeCfg;
-      for (const cat of categories) {
-        if (id === "cat-" + cat.key) return cat.value;
-        for (let i = 0; i < cat.items.length; i++) {
-          if (id === "bucket-" + cat.key + "-" + i) return cat.items[i].value;
-        }
-      }
-      return 0;
-    };
+    const maxDepth = layout.nodes.reduce((m, n) => Math.max(m, n.depth), 0);
+    const labelForId = (id) => (meta[id] && meta[id].label) || "";
+    const valueForId = (id) => (meta[id] && meta[id].value) || 0;
 
     const linkPath = sankeyLinkHorizontal();
 
@@ -3794,7 +3811,7 @@ return (
               const h = node.y1 - node.y0;
               const col = colorMap[node.id] || T.text3;
               const isLeft = node.depth === 0;
-              const isRight = node.depth === 2;
+              const isRight = node.depth === maxDepth;
               return (
                 <g key={node.id}>
                   <rect x={node.x0} y={node.y0} width={node.x1 - node.x0} height={h} rx={Math.min(6, h / 2)} fill={col} opacity={0.85} />
