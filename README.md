@@ -26,7 +26,7 @@ This is a single-file React app (~3,500 lines) built for simplicity and portabil
 - **localStorage** (no backend, no API calls)
 - **SVG** (interactive diagrams, no charting library)
 - **DM Mono** (typography via Google Fonts CDN)
-- **Netlify** (deployment)
+- **Skystra** (deployment)
 
 ## Quick start
 
@@ -45,17 +45,17 @@ npm run build
 
 Then open [http://localhost:5173](http://localhost:5173).
 
-### Deploy to Netlify
+### Deploy to Skystra
 
 ```bash
 # Build locally
 npm run build
 
 # Deploy
-netlify deploy --prod --dir=dist
+skystra deploy --prod --dir=dist
 ```
 
-Or push to GitHub and connect your repo to Netlify for continuous deployment.
+Or push to GitHub and connect your repo to Skystra for continuous deployment.
 
 ## Data model
 
