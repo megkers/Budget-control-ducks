@@ -1335,7 +1335,7 @@ const cs = {
   header: { borderBottom: "1px solid " + T.bord, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" },
   sel: { background: T.surf, border: "1px solid " + T.bord, color: T.text1, padding: "7px 10px", borderRadius: "6px", fontSize: "12px", cursor: "pointer" },
   tabs: { display: "flex", borderBottom: "1px solid " + T.bord, padding: "0 24px", overflowX: "auto", overflowY: "hidden", minHeight: "42px", scrollbarWidth: "none", msOverflowStyle: "none" },
-  body: { padding: "20px 24px", maxWidth: "1100px", margin: "0 auto" },
+  body: { padding: "20px 24px", maxWidth: "1440px", margin: "0" },
   lbl: { fontSize: "12px", letterSpacing: "0.12em", color: T.text2, textTransform: "uppercase", marginBottom: "4px" },
   inp: { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" },
 };

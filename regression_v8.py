@@ -43,8 +43,8 @@ checks = [
     # -- Settings / UI --
     ('Settings tab',                 'Edit Budget Setup' in code),
     ('modals inside return tree',    code.rindex('editModal === "debt"') < code.rindex('  );\n}')),
-    ('cs.body centered',             'margin: "0 auto"' in code),
-    ('cs.body wider',                '1100px' in code),
+    ('cs.body left-aligned',         'margin: "0"' in code),
+    ('cs.body wider',                '1440px' in code),
     ('Overview KPI auto-fit',        'repeat(auto-fit, minmax(180px, 1fr))' in code),
     # -- v8: Math integrity --
     ('Shared getReserveBal',         'function getReserveBal(' in code),
