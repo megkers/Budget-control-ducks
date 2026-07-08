@@ -348,7 +348,7 @@ return (
 <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "DM Mono, monospace" }}>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&family=DM+Mono:wght@400;500&display=block" rel="stylesheet" />
 <style>{`.material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; display: inline-block; line-height: 1; text-transform: none; letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr; }`}</style>
-<div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "16px", padding: "40px 32px", maxWidth: "420px", width: "100%", textAlign: "center" }}>
+<div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "40px 32px", maxWidth: "420px", width: "100%", textAlign: "center" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.2em", color: T.text3, textTransform: "uppercase", marginBottom: "8px" }}>Paycheck Split Tracker</div>
 <div style={{ fontSize: "26px", fontWeight: "700", color: T.text1, marginBottom: "12px" }}>Budget Control</div>
 <div style={{ fontSize: "12px", color: T.text3, marginBottom: "32px", lineHeight: "1.6" }}>
@@ -356,11 +356,11 @@ Your budget lives only on your device. Nothing is sent to a server.
 </div>
 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
 <button onClick={() => setMode("wizard")}
-style={{ background: T.blue, border: "none", color: T.bg, padding: "13px", borderRadius: "8px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+style={{ background: T.blue, border: "none", color: T.bg, padding: "13px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
 Set Up My Budget
 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_forward</span>
 </button>
-<label style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "13px", borderRadius: "8px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+<label style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "13px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>upload</span>
 Import from CSV
 <input type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={function(ev) {
@@ -668,7 +668,7 @@ return (
 </span>
 </span>
 </div>
-<div style={{ background: T.bord, borderRadius: "4px", height: "5px", display: "flex", overflow: "hidden", marginBottom: "6px" }}>
+<div style={{ background: T.bord, borderRadius: "2px", height: "5px", display: "flex", overflow: "hidden", marginBottom: "6px" }}>
 {over ? (
 <div style={{ height: "100%", width: "100%", background: T.red, transition: "width 0.3s" }} />
 ) : (
@@ -709,10 +709,10 @@ return (
 {children}
 </div>
 <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.bg, borderTop: "1px solid " + T.bord, padding: "14px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-<button onClick={onBack} style={{ background: "transparent", border: "1px solid " + T.bord, color: T.text3, padding: "10px 20px", borderRadius: "8px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px" }}>
+<button onClick={onBack} style={{ background: "transparent", border: "1px solid " + T.bord, color: T.text3, padding: "10px 20px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px" }}>
 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_back</span>Back
 </button>
-<button onClick={onNext} disabled={!canNext} style={{ background: canNext ? T.blue : T.bord, border: "none", color: canNext ? T.bg : T.muted, padding: "10px 24px", borderRadius: "8px", fontSize: "13px", fontWeight: "700", cursor: canNext ? "pointer" : "not-allowed", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px" }}>
+<button onClick={onNext} disabled={!canNext} style={{ background: canNext ? T.blue : T.bord, border: "none", color: canNext ? T.bg : T.muted, padding: "10px 24px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: canNext ? "pointer" : "not-allowed", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px" }}>
 {step === "review" ? "Launch Budget" : "Continue"}
 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_forward</span>
 </button>
@@ -897,7 +897,7 @@ const mult    = FREQ[inc.frequency] || 1;
 const monthly = Math.round((parseFloat(inc.netPay) || 0) * mult);
 const upd     = patch => setIncomes(p => p.map((x, j) => j === i ? { ...x, ...patch } : x));
 return (
-<div key={i} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "16px", marginBottom: "10px" }}>
+<div key={i} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px", marginBottom: "10px" }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
 <div style={{ fontSize: "12px", fontWeight: "700", color: T.blue }}>Income stream {i + 1}{i === 0 ? " - Primary" : ""}</div>
 {incomes.length > 1 && (
@@ -908,13 +908,13 @@ return (
 </div>
 <div style={{ marginBottom: "12px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>Label</div>
-<input type="text" placeholder="e.g. Main Job" value={inc.label} onChange={e => upd({ label: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "16px", width: "100%", boxSizing: "border-box" }} />
+<input type="text" placeholder="e.g. Main Job" value={inc.label} onChange={e => upd({ label: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "100%", boxSizing: "border-box" }} />
 </div>
 <div style={{ marginBottom: "12px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>How often are you paid?</div>
-<div style={{ display: "flex", background: T.bg, borderRadius: "8px", padding: "3px" }}>
+<div style={{ display: "flex", background: T.bg, borderRadius: "4px", padding: "3px" }}>
 {FREQ_OPTS.map(opt => (
-<div key={opt.value} onClick={() => upd({ frequency: opt.value })} style={{ flex: 1, padding: "7px 4px", textAlign: "center", cursor: "pointer", borderRadius: "6px", fontSize: "12px", textTransform: "uppercase", background: inc.frequency === opt.value ? T.blue : "transparent", color: inc.frequency === opt.value ? T.bg : T.text3, fontWeight: inc.frequency === opt.value ? "700" : "400" }}>
+<div key={opt.value} onClick={() => upd({ frequency: opt.value })} style={{ flex: 1, padding: "7px 4px", textAlign: "center", cursor: "pointer", borderRadius: "4px", fontSize: "12px", textTransform: "uppercase", background: inc.frequency === opt.value ? T.blue : "transparent", color: inc.frequency === opt.value ? T.bg : T.text3, fontWeight: inc.frequency === opt.value ? "700" : "400" }}>
 {opt.label}
 </div>
 ))}
@@ -922,20 +922,20 @@ return (
 </div>
 <div style={{ marginBottom: "12px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>Amount per paycheck (after tax)</div>
-<input type="number" placeholder="e.g. 1800" value={inc.netPay} onChange={e => upd({ netPay: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "20px", width: "100%", boxSizing: "border-box" }} />
+<input type="number" placeholder="e.g. 1800" value={inc.netPay} onChange={e => upd({ netPay: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "20px", width: "100%", boxSizing: "border-box" }} />
 </div>
 {inc.frequency === "monthly" && (
 <div style={{ marginBottom: "12px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>Payday - day of month</div>
-<input type="number" placeholder="e.g. 27" min="1" max="28" value={inc.payday} onChange={e => upd({ payday: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "16px", width: "100px", boxSizing: "border-box" }} />
+<input type="number" placeholder="e.g. 27" min="1" max="28" value={inc.payday} onChange={e => upd({ payday: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "100px", boxSizing: "border-box" }} />
 </div>
 )}
 {inc.frequency === "semimonthly" && (
 <div style={{ marginBottom: "12px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>Payday days</div>
 <div style={{ display: "flex", gap: "10px" }}>
-<input type="number" placeholder="e.g. 1" min="1" max="28" value={inc.payday} onChange={e => upd({ payday: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "16px", width: "80px" }} />
-<input type="number" placeholder="e.g. 15" min="1" max="28" value={inc.payday2 || ""} onChange={e => upd({ payday2: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "16px", width: "80px" }} />
+<input type="number" placeholder="e.g. 1" min="1" max="28" value={inc.payday} onChange={e => upd({ payday: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "80px" }} />
+<input type="number" placeholder="e.g. 15" min="1" max="28" value={inc.payday2 || ""} onChange={e => upd({ payday2: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "80px" }} />
 </div>
 </div>
 )}
@@ -958,7 +958,7 @@ Since your payday shifts each week, we calculate your monthly total automaticall
 );
 })}
 {incomes.length < 4 && (
-<button onClick={() => setIncomes(p => [...p, { label: "", netPay: "", payday: "", frequency: "monthly" }])} style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.text3, padding: "10px 16px", borderRadius: "8px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+<button onClick={() => setIncomes(p => [...p, { label: "", netPay: "", payday: "", frequency: "monthly" }])} style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.text3, padding: "10px 16px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>Add another income stream
 </button>
 )}
@@ -976,8 +976,8 @@ Your paycheck gets split into three pools. The next three steps will fill each o
 </div>
 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
 
-<div style={{ background: T.surf, border: "1px solid #4A9EFF44", borderRadius: "12px", padding: "16px 18px", display: "flex", alignItems: "center", gap: "14px" }}>
-<div style={{ width: "44px", height: "44px", borderRadius: "10px", background: "#4A9EFF22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+<div style={{ background: T.surf, border: "1px solid #4A9EFF44", borderRadius: "8px", padding: "16px 18px", display: "flex", alignItems: "center", gap: "14px" }}>
+<div style={{ width: "44px", height: "44px", borderRadius: "8px", background: "#4A9EFF22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
 <span className="material-symbols-outlined" style={{ fontSize: "24px", color: T.blue }}>lock</span>
 </div>
 <div>
@@ -990,8 +990,8 @@ Your paycheck gets split into three pools. The next three steps will fill each o
 <span className="material-symbols-outlined" style={{ fontSize: "20px", color: T.bord }}>arrow_downward</span>
 </div>
 
-<div style={{ background: T.surf, border: "1px solid #FFB34744", borderRadius: "12px", padding: "16px 18px", display: "flex", alignItems: "center", gap: "14px" }}>
-<div style={{ width: "44px", height: "44px", borderRadius: "10px", background: "#FFB34722", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+<div style={{ background: T.surf, border: "1px solid #FFB34744", borderRadius: "8px", padding: "16px 18px", display: "flex", alignItems: "center", gap: "14px" }}>
+<div style={{ width: "44px", height: "44px", borderRadius: "8px", background: "#FFB34722", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
 <span className="material-symbols-outlined" style={{ fontSize: "24px", color: "#FFB347" }}>shopping_cart</span>
 </div>
 <div>
@@ -1004,8 +1004,8 @@ Your paycheck gets split into three pools. The next three steps will fill each o
 <span className="material-symbols-outlined" style={{ fontSize: "20px", color: T.bord }}>arrow_downward</span>
 </div>
 
-<div style={{ background: T.surf, border: "1px solid #B8A9FF44", borderRadius: "12px", padding: "16px 18px", display: "flex", alignItems: "center", gap: "14px" }}>
-<div style={{ width: "44px", height: "44px", borderRadius: "10px", background: "#B8A9FF22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+<div style={{ background: T.surf, border: "1px solid #B8A9FF44", borderRadius: "8px", padding: "16px 18px", display: "flex", alignItems: "center", gap: "14px" }}>
+<div style={{ width: "44px", height: "44px", borderRadius: "8px", background: "#B8A9FF22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
 <span className="material-symbols-outlined" style={{ fontSize: "24px", color: "#B8A9FF" }}>savings</span>
 </div>
 <div>
@@ -1017,7 +1017,7 @@ Your paycheck gets split into three pools. The next three steps will fill each o
 </div>
 
 {totalIncome > 0 && (
-<div style={{ background: T.blueBg, border: "1px solid " + T.blueBord, borderRadius: "10px", padding: "14px 16px", marginTop: "20px", textAlign: "center" }}>
+<div style={{ background: T.blueBg, border: "1px solid " + T.blueBord, borderRadius: "8px", padding: "14px 16px", marginTop: "20px", textAlign: "center" }}>
 <div style={{ fontSize: "12px", color: T.text3, marginBottom: "4px" }}>Your monthly income</div>
 <div style={{ fontSize: "22px", fontWeight: "700", color: T.green }}>{fmt0h(totalIncome)}</div>
 <div style={{ fontSize: "12px", color: T.text3, marginTop: "4px" }}>will be split across these three pools</div>
@@ -1052,11 +1052,11 @@ return (
 const dayVal = parseInt(b.day, 10);
 const dayErr = b.day !== "" && (isNaN(dayVal) || dayVal < 1 || dayVal > 28);
 return (
-<div key={i} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "10px 12px", marginBottom: "6px" }}>
+<div key={i} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "10px 12px", marginBottom: "6px" }}>
 <div style={{ display: "grid", gridTemplateColumns: "1fr 65px 48px auto", gap: "6px", alignItems: "center" }}>
-<input type="text" placeholder="Bill name" value={b.name} onChange={e => setBills(p => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 6px", borderRadius: "6px", fontSize: "14px", minWidth: 0 }} />
-<input type="number" placeholder="Amt" value={b.amt || ""} onChange={e => setBills(p => p.map((x, j) => j === i ? { ...x, amt: e.target.value } : x))} disabled={b.note === "cc"} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 6px", borderRadius: "6px", fontSize: "14px", minWidth: 0 }} />
-<input type="number" placeholder="Due" min="1" max="28" value={b.day || ""} onChange={e => setBills(p => p.map((x, j) => j === i ? { ...x, day: e.target.value } : x))} onBlur={e => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setBills(p => p.map((x, j) => j === i ? { ...x, day: String(Math.min(28, Math.max(1, v))) } : x)); }} style={{ background: T.bg, border: `1px solid ${dayErr ? T.red : T.bord}`, color: T.text1, padding: "8px 6px", borderRadius: "6px", fontSize: "14px", minWidth: 0 }} />
+<input type="text" placeholder="Bill name" value={b.name} onChange={e => setBills(p => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 6px", borderRadius: "4px", fontSize: "14px", minWidth: 0 }} />
+<input type="number" placeholder="Amt" value={b.amt || ""} onChange={e => setBills(p => p.map((x, j) => j === i ? { ...x, amt: e.target.value } : x))} disabled={b.note === "cc"} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 6px", borderRadius: "4px", fontSize: "14px", minWidth: 0 }} />
+<input type="number" placeholder="Due" min="1" max="28" value={b.day || ""} onChange={e => setBills(p => p.map((x, j) => j === i ? { ...x, day: e.target.value } : x))} onBlur={e => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setBills(p => p.map((x, j) => j === i ? { ...x, day: String(Math.min(28, Math.max(1, v))) } : x)); }} style={{ background: T.bg, border: `1px solid ${dayErr ? T.red : T.bord}`, color: T.text1, padding: "8px 6px", borderRadius: "4px", fontSize: "14px", minWidth: 0 }} />
 <button onClick={() => setBills(p => p.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex", alignItems: "center" }}>
 <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>delete</span>
 </button>
@@ -1064,7 +1064,7 @@ return (
 {dayErr && <div style={{ fontSize: "12px", color: T.red, marginTop: "4px" }}>Day must be 1-28</div>}
 {b.note === "cc" && (
 <div style={{ marginTop: "8px", display: "flex", alignItems: "flex-start", gap: "7px" }}>
-<div style={{ width: "14px", height: "14px", borderRadius: "3px", border: "2px solid " + T.blue, background: T.blue, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "2px" }}>
+<div style={{ width: "14px", height: "14px", borderRadius: "4px", border: "2px solid " + T.blue, background: T.blue, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "2px" }}>
 <span className="material-symbols-outlined" style={{ color: T.bg, fontSize: "12px" }}>check</span>
 </div>
 <span style={{ fontSize: "12px", color: T.text3, lineHeight: "1.5" }}>Don't apply to this month's budget - this is a credit card payment whose balance changes each month</span>
@@ -1073,7 +1073,7 @@ return (
 </div>
 );
 })}
-<button onClick={() => setBills(p => [...p, { ...BLANK_BILL(), category: cat }])} style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.muted, padding: "7px 14px", borderRadius: "8px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", marginTop: "2px", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+<button onClick={() => setBills(p => [...p, { ...BLANK_BILL(), category: cat }])} style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.muted, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", marginTop: "2px", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
 <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>Add {cat.toLowerCase()} bill
 </button>
 </div>
@@ -1093,14 +1093,14 @@ if (step === "discretionary") {
 return (
 <WizardShell {...shellProps} title="Discretionary spending" subtitle="Unlike fixed bills, these are flexible - you set a monthly target, but what you actually spend will vary." canNext={true} onNext={next}>
 {disc.map((b, i) => (
-<div key={b.id} style={{ background: T.surf, border: `1px solid ${b.color}44`, borderRadius: "10px", padding: "14px 16px", marginBottom: "10px" }}>
+<div key={b.id} style={{ background: T.surf, border: `1px solid ${b.color}44`, borderRadius: "8px", padding: "14px 16px", marginBottom: "10px" }}>
 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
 <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: b.color, flexShrink: 0 }} />
 <input type="text" value={b.label} onChange={e => setDisc(p => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} style={{ background: "transparent", border: "none", borderBottom: "1px solid " + T.bord, color: T.text1, padding: "2px 0", fontSize: "14px", fontWeight: "600", flex: 1, fontFamily: "DM Mono, monospace" }} />
 </div>
 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
 <span style={{ fontSize: "12px", color: T.text3 }}>Monthly budget</span>
-<input type="number" placeholder="0" value={b.amount || ""} onChange={e => setDisc(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "16px", width: "120px" }} />
+<input type="number" placeholder="0" value={b.amount || ""} onChange={e => setDisc(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "120px" }} />
 <span style={{ fontSize: "12px", color: T.text3 }}>/mo</span>
 </div>
 </div>
@@ -1114,12 +1114,12 @@ if (step === "reserves") {
 return (
 <WizardShell {...shellProps} title="Savings & reserves" subtitle="Unlike fixed bills or discretionary spending, reserves accumulate month to month - you're setting aside a little each month so the money is there when you need it. Think vet visits, auto repairs, or a vacation." canNext={true} onNext={next}>
 {reserves.map((b, i) => (
-<div key={b.id} style={{ background: T.surf, border: `1px solid ${b.color}44`, borderRadius: "10px", padding: "14px 16px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "14px" }}>
+<div key={b.id} style={{ background: T.surf, border: `1px solid ${b.color}44`, borderRadius: "8px", padding: "14px 16px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "14px" }}>
 <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: b.color, flexShrink: 0 }} />
 <div style={{ flex: 1 }}>
 <input type="text" value={b.label} onChange={e => setReserves(p => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} style={{ background: "transparent", border: "none", borderBottom: "1px solid " + T.bord, color: T.text1, padding: "2px 0", fontSize: "14px", fontWeight: "600", width: "100%", fontFamily: "DM Mono, monospace", marginBottom: "8px" }} />
 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-<input type="number" placeholder="0" value={b.amount || ""} onChange={e => setReserves(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "16px", width: "120px" }} />
+<input type="number" placeholder="0" value={b.amount || ""} onChange={e => setReserves(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "120px" }} />
 <span style={{ fontSize: "12px", color: T.text2 }}>/mo contribution</span>
 </div>
 </div>
@@ -1146,7 +1146,7 @@ function toggle(id, name, amt, type) {
 function updLinked(id, patch) { setDebts(p => p.map(d => d.linkedBucketId === id ? { ...d, ...patch } : d)); }
 function updManual(id, patch) { setDebts(p => p.map(d => d.id === id ? { ...d, ...patch } : d)); }
 
-const inpStyle = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "14px", width: "100%", boxSizing: "border-box" };
+const inpStyle = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "14px", width: "100%", boxSizing: "border-box" };
 
 const renderDebtDetail = (d, onChange) => (
   <div style={{ marginTop: "12px", borderTop: "1px solid " + T.bord, paddingTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -1185,7 +1185,7 @@ return (
           const isLinked = linkedIds.has(b.name);
           const debt = debts.find(d => d.linkedBucketId === b.name);
           return (
-            <div key={b.name} style={{ background: T.surf, border: `1px solid ${isLinked ? "#4A9EFF55" : T.bord}`, borderRadius: "10px", padding: "12px 14px", marginBottom: "8px" }}>
+            <div key={b.name} style={{ background: T.surf, border: `1px solid ${isLinked ? "#4A9EFF55" : T.bord}`, borderRadius: "8px", padding: "12px 14px", marginBottom: "8px" }}>
               <div onClick={() => toggle(b.name, b.name, b.amt, "fixed")} style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
                 <div style={{ width: "18px", height: "18px", borderRadius: "4px", border: `2px solid ${isLinked ? T.blue : T.bord}`, background: isLinked ? T.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {isLinked && <span className="material-symbols-outlined" style={{ fontSize: "14px", color: T.bg }}>check</span>}
@@ -1209,7 +1209,7 @@ return (
           const isLinked = linkedIds.has(b.id);
           const debt = debts.find(d => d.linkedBucketId === b.id);
           return (
-            <div key={b.id} style={{ background: T.surf, border: `1px solid ${isLinked ? "#FFB34755" : T.bord}`, borderRadius: "10px", padding: "12px 14px", marginBottom: "8px" }}>
+            <div key={b.id} style={{ background: T.surf, border: `1px solid ${isLinked ? "#FFB34755" : T.bord}`, borderRadius: "8px", padding: "12px 14px", marginBottom: "8px" }}>
               <div onClick={() => toggle(b.id, b.label, b.amount, "discretionary")} style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
                 <div style={{ width: "18px", height: "18px", borderRadius: "4px", border: `2px solid ${isLinked ? "#FFB347" : T.bord}`, background: isLinked ? "#FFB347" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {isLinked && <span className="material-symbols-outlined" style={{ fontSize: "14px", color: T.bg }}>check</span>}
@@ -1230,7 +1230,7 @@ return (
       <div style={{ marginBottom: "12px" }}>
         <div style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color: T.text3, marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid " + T.bord }}>Other debts</div>
         {manualDebts.map((d, i) => (
-          <div key={d.id} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "12px 14px", marginBottom: "8px" }}>
+          <div key={d.id} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 14px", marginBottom: "8px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <div style={{ fontSize: "12px", fontWeight: "700", color: T.text3 }}>Debt {i + 1}</div>
               <button onClick={() => setDebts(p => p.filter(x => x.id !== d.id))} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -1240,11 +1240,11 @@ return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
               <div>
                 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "4px" }}>Name</div>
-                <input type="text" placeholder="e.g. Student Loan" value={d.name} onChange={e => updManual(d.id, { name: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "14px", width: "100%", boxSizing: "border-box" }} />
+                <input type="text" placeholder="e.g. Student Loan" value={d.name} onChange={e => updManual(d.id, { name: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "14px", width: "100%", boxSizing: "border-box" }} />
               </div>
               <div>
                 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "4px" }}>Monthly payment</div>
-                <input type="number" placeholder="0" value={d.monthly || ""} onChange={e => updManual(d.id, { monthly: parseFloat(e.target.value) || 0, monthlyPrincipal: parseFloat(e.target.value) || 0 })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "14px", width: "100%", boxSizing: "border-box" }} />
+                <input type="number" placeholder="0" value={d.monthly || ""} onChange={e => updManual(d.id, { monthly: parseFloat(e.target.value) || 0, monthlyPrincipal: parseFloat(e.target.value) || 0 })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "14px", width: "100%", boxSizing: "border-box" }} />
               </div>
             </div>
             <div style={{ fontSize: "12px", color: T.muted, marginBottom: "8px" }}>Add this payment to Fixed Bills so it counts toward your budget.</div>
@@ -1255,13 +1255,13 @@ return (
     )}
 
     {filledBills.length === 0 && filledDisc.length === 0 && debts.length === 0 && (
-      <div style={{ background: T.surf, border: "1px dashed " + T.bord, borderRadius: "10px", padding: "20px", textAlign: "center", marginBottom: "16px" }}>
+      <div style={{ background: T.surf, border: "1px dashed " + T.bord, borderRadius: "8px", padding: "20px", textAlign: "center", marginBottom: "16px" }}>
         <span className="material-symbols-outlined" style={{ fontSize: "32px", color: T.muted, display: "block", marginBottom: "8px" }}>credit_card_off</span>
         <div style={{ fontSize: "13px", color: T.muted }}>No bills or spending categories to link yet. Add a manual debt below, or skip this step.</div>
       </div>
     )}
 
-    <button onClick={() => setDebts(p => [...p, newDebt()])} style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.text3, padding: "10px 16px", borderRadius: "8px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+    <button onClick={() => setDebts(p => [...p, newDebt()])} style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.text3, padding: "10px 16px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
       <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>Add a debt not in my bills
     </button>
   </WizardShell>
@@ -1274,7 +1274,7 @@ if (step === "review") {
 const fmt0 = n => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 return (
 <WizardShell {...shellProps} title="Review your budget" subtitle="Everything looks right? Hit Launch to get started." canNext={unallocated >= 0} onNext={finish}>
-<div style={{ background: T.surf, border: "1px solid " + T.blueBord, borderRadius: "10px", padding: "14px 16px", marginBottom: "10px" }}>
+<div style={{ background: T.surf, border: "1px solid " + T.blueBord, borderRadius: "8px", padding: "14px 16px", marginBottom: "10px" }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
 <span style={{ fontSize: "12px", color: T.text3 }}>Total income</span>
 <span style={{ fontSize: "13px", fontWeight: "700", color: T.green }}>{fmt0(totalIncome)}/mo</span>
@@ -1311,7 +1311,7 @@ var current = parseFloat(r.amount) || 0;
 return { ...r, amount: String(Math.round((current + added) * 100) / 100) };
 });
 });
-}} style={{ background: T.green, border: "none", color: T.bg, padding: "8px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>
+}} style={{ background: T.green, border: "none", color: T.bg, padding: "8px 14px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>
 Add {fmt0(unallocated)}/mo to General Savings
 </button>
 </div>
@@ -1333,17 +1333,17 @@ const T = THEMES[resolvedMode];
 const cs = {
   page: { minHeight: "100vh", background: T.bg, color: T.text1, fontFamily: "DM Mono, monospace" },
   header: { borderBottom: "1px solid " + T.bord, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" },
-  sel: { background: T.surf, border: "1px solid " + T.bord, color: T.text1, padding: "7px 10px", borderRadius: "6px", fontSize: "12px", cursor: "pointer" },
+  sel: { background: T.surf, border: "1px solid " + T.bord, color: T.text1, padding: "7px 10px", borderRadius: "4px", fontSize: "12px", cursor: "pointer" },
   tabs: { display: "flex", borderBottom: "1px solid " + T.bord, padding: "0 24px", overflowX: "auto", overflowY: "hidden", minHeight: "42px", scrollbarWidth: "none", msOverflowStyle: "none" },
   body: { padding: "20px 24px", maxWidth: "1440px", margin: "0" },
   lbl: { fontSize: "12px", letterSpacing: "0.12em", color: T.text2, textTransform: "uppercase", marginBottom: "4px" },
-  inp: { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" },
+  inp: { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "13px", boxSizing: "border-box" },
 };
 function Card({ children, border, style, onClick }) {
-  return <div onClick={onClick} style={{ background: T.surf, border: "1px solid " + (border || T.bord), borderRadius: "10px", padding: "16px 18px", marginBottom: "10px", ...style }}>{children}</div>;
+  return <div onClick={onClick} style={{ background: T.surf, border: "1px solid " + (border || T.bord), borderRadius: "8px", padding: "16px 18px", marginBottom: "10px", ...style }}>{children}</div>;
 }
 function Btn({ color, outline, onClick, children, style }) {
-  return <button onClick={onClick} style={{ background: outline ? "transparent" : color, border: "1px solid " + color, color: outline ? color : T.bg, padding: "7px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer", ...style }}>{children}</button>;
+  return <button onClick={onClick} style={{ background: outline ? "transparent" : color, border: "1px solid " + color, color: outline ? color : T.bg, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", ...style }}>{children}</button>;
 }
 
 // Keep data-theme on body in sync for CSS spinner styling
@@ -1639,7 +1639,7 @@ const saveEditModal = () => {
 const renderModalOverlay = (title, content) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
     onClick={e => { if (e.target === e.currentTarget) setEditModal(null); }}>
-    <div style={{ background: T.surf, borderRadius: "16px 16px 0 0", width: "100%", maxWidth: "600px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+    <div style={{ background: T.surf, borderRadius: "8px 8px 0 0", width: "100%", maxWidth: "600px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
         <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{title}</span>
         <button onClick={() => setEditModal(null)} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -1648,8 +1648,8 @@ const renderModalOverlay = (title, content) => (
       </div>
       <div style={{ overflowY: "auto", padding: "16px 20px 8px", flex: 1 }}>{content}</div>
       <div style={{ padding: "12px 20px 20px", borderTop: "1px solid " + T.bord, display: "flex", gap: "10px", flexShrink: 0 }}>
-        <button onClick={() => setEditModal(null)} style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text3, padding: "10px", borderRadius: "8px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Cancel</button>
-        <button onClick={saveEditModal} style={{ flex: 2, background: T.blue, border: "none", color: T.bg, padding: "10px", borderRadius: "8px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Save Changes</button>
+        <button onClick={() => setEditModal(null)} style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text3, padding: "10px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Cancel</button>
+        <button onClick={saveEditModal} style={{ flex: 2, background: T.blue, border: "none", color: T.bg, padding: "10px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Save Changes</button>
       </div>
     </div>
   </div>
@@ -1660,7 +1660,7 @@ const renderInfoModal = (title, content, onClose) => {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0" }}
       onClick={e => { if (e.target === e.currentTarget) close(); }}>
-      <div style={{ background: T.surf, borderRadius: "16px", width: "100%", maxWidth: "760px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: T.surf, borderRadius: "8px", width: "100%", maxWidth: "760px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{title}</span>
           <button onClick={close} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -1707,7 +1707,7 @@ const renderDebtInfoModal = () => {
     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
       {dashed
         ? <svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke={color} strokeWidth="2" strokeDasharray="4 3" /></svg>
-        : <span style={{ width: "16px", height: "12px", borderRadius: "3px", background: color, display: "inline-block" }} />}
+        : <span style={{ width: "16px", height: "12px", borderRadius: "2px", background: color, display: "inline-block" }} />}
       <span style={{ fontSize: "12px", color: T.text2 }}>{label}</span>
     </div>
   );
@@ -1719,7 +1719,7 @@ const renderDebtInfoModal = () => {
         <div style={{ fontSize: "20px", fontWeight: "700", color: PINK }}>{kfmt(windowPaid)} paid off</div>
       </div>
 
-      <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "18px", padding: "12px 8px 8px" }}>
+      <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 8px 8px" }}>
         <svg viewBox={"0 0 " + W + " " + H} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", display: "block" }}>
           <defs>
             <linearGradient id="debtPaidArea" x1="0" y1="0" x2="0" y2="1">
@@ -1791,7 +1791,7 @@ const renderDebtInfoModal = () => {
 const renderLogSpend = () => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0" }}
     onClick={e => { if (e.target === e.currentTarget) setEditModal(null); }}>
-    <div style={{ background: T.surf, borderRadius: "16px", width: "100%", maxWidth: "600px", maxHeight: "85vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+    <div style={{ background: T.surf, borderRadius: "8px", width: "100%", maxWidth: "600px", maxHeight: "85vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
         <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>Log Transaction</span>
         <button onClick={() => setEditModal(null)} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -1799,10 +1799,10 @@ const renderLogSpend = () => (
         </button>
       </div>
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
-        <div style={{ background: T.bg, borderRadius: "8px", padding: "3px", display: "flex" }}>
+        <div style={{ background: T.bg, borderRadius: "4px", padding: "3px", display: "flex" }}>
           {[["reserve", "Reserve"], ["discretionary", "Discretionary"]].map(([val, label]) => (
             <div key={val} onClick={() => setTxCategory(val)}
-              style={{ flex: 1, padding: "6px 0", textAlign: "center", cursor: "pointer", borderRadius: "6px", fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", background: txCategory === val ? T.blue : "transparent", color: txCategory === val ? T.bg : T.text2, fontWeight: txCategory === val ? "700" : "400", transition: "all 0.15s" }}>
+              style={{ flex: 1, padding: "6px 0", textAlign: "center", cursor: "pointer", borderRadius: "4px", fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", background: txCategory === val ? T.blue : "transparent", color: txCategory === val ? T.bg : T.text2, fontWeight: txCategory === val ? "700" : "400", transition: "all 0.15s" }}>
               {label}
             </div>
           ))}
@@ -1844,7 +1844,7 @@ const renderLogSpend = () => (
       </div>
       <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0 }}>
         <button onClick={addTransaction}
-          style={{ width: "100%", background: T.blue, border: "none", color: T.bg, padding: "12px", borderRadius: "8px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
+          style={{ width: "100%", background: T.blue, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
           + Add Transaction
         </button>
       </div>
@@ -1895,7 +1895,7 @@ const renderEditBills = () => {
             );
           })}
           <button onClick={() => setEditBills(p => [...p, { ...BLANK_BILL(), category: cat }])}
-            style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.muted, padding: "6px 12px", borderRadius: "6px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", marginTop: "2px" }}>
+            style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.muted, padding: "6px 12px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", marginTop: "2px" }}>
             <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>add</span>Add {cat.toLowerCase()} bill
           </button>
         </div>
@@ -1972,7 +1972,7 @@ const renderEditDebtModal = () => {
         <div style={{ textAlign: "center", padding: "20px 0", color: T.muted, fontSize: "13px" }}>No debts yet. Add one below.</div>
       )}
       {editDebts.map((d, i) => (
-        <div key={d.id} style={{ background: T.bg, border: "1px solid " + T.bord, borderRadius: "10px", padding: "12px 14px", marginBottom: "10px" }}>
+        <div key={d.id} style={{ background: T.bg, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 14px", marginBottom: "10px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
             <span style={{ fontSize: "12px", fontWeight: "700", color: T.text3 }}>Debt {i+1}</span>
             <button onClick={() => setEditDebts(p => p.filter((_,j) => j !== i))}
@@ -2027,7 +2027,7 @@ const renderEditDebtModal = () => {
         </div>
       ))}
       <button onClick={() => setEditDebts(p => [...p, { id: "d-"+Date.now(), name: "", type: "other", balance: "", apr: "", monthly: "", monthlyPrincipal: "", balanceAsOf: new Date().toISOString().slice(0,10), grows: false, escrow: 0, note: "" }])}
-        style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.text3, padding: "10px 16px", borderRadius: "8px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+        style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.text3, padding: "10px 16px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
         <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>Add a debt
       </button>
     </div>
@@ -2054,7 +2054,7 @@ const renderEditIncome = () => {
         var mult = FREQ_MULT[inc.frequency] || 1;
         var monthly = Math.round((parseFloat(inc.netPay) || 0) * mult * 100) / 100;
         return (
-          <div key={i} style={{ background: T.bg, border: "1px solid " + T.bord, borderRadius: "10px", padding: "12px 14px", marginBottom: "10px" }}>
+          <div key={i} style={{ background: T.bg, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 14px", marginBottom: "10px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
               <span style={{ fontSize: "12px", fontWeight: "700", color: T.blue }}>Income {i + 1}{i === 0 ? " - Primary" : ""}</span>
               {editIncomes.length > 1 && (
@@ -2072,13 +2072,13 @@ const renderEditIncome = () => {
             </div>
             <div style={{ marginBottom: "10px" }}>
               <div style={{ ...cs.lbl, marginBottom: "4px" }}>Frequency</div>
-              <div style={{ display: "flex", background: T.surf, borderRadius: "8px", padding: "3px" }}>
+              <div style={{ display: "flex", background: T.surf, borderRadius: "4px", padding: "3px" }}>
                 {FREQ_OPTS.map(function(opt) {
                   var isActive = inc.frequency === opt.value;
                   return (
                     <div key={opt.value}
                       onClick={function() { setEditIncomes(function(p) { return p.map(function(x, j) { return j === i ? Object.assign({}, x, { frequency: opt.value }) : x; }); }); }}
-                      style={{ flex: 1, padding: "6px 4px", textAlign: "center", cursor: "pointer", borderRadius: "6px", fontSize: "12px", textTransform: "uppercase", background: isActive ? T.blue : "transparent", color: isActive ? T.bg : T.text3, fontWeight: isActive ? "700" : "400" }}>
+                      style={{ flex: 1, padding: "6px 4px", textAlign: "center", cursor: "pointer", borderRadius: "4px", fontSize: "12px", textTransform: "uppercase", background: isActive ? T.blue : "transparent", color: isActive ? T.bg : T.text3, fontWeight: isActive ? "700" : "400" }}>
                       {opt.label}
                     </div>
                   );
@@ -2113,7 +2113,7 @@ const renderEditIncome = () => {
       })}
       {editIncomes.length < 4 && (
         <button onClick={function() { setEditIncomes(function(p) { return p.concat([{ label: "", netPay: "", payday: "", frequency: "monthly" }]); }); }}
-          style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.text3, padding: "10px 16px", borderRadius: "8px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+          style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.text3, padding: "10px 16px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
           <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>Add income stream
         </button>
       )}
@@ -2124,7 +2124,7 @@ const renderEditIncome = () => {
 // Floating edit button used in each tab
 const renderEditBtn = (panel) => (
   <button onClick={() => openEditModal(panel)}
-    style={{ display: "flex", alignItems: "center", gap: "5px", background: T.surf, border: "1px solid " + T.bord, color: T.text3, padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.05em", marginBottom: "14px" }}>
+    style={{ display: "flex", alignItems: "center", gap: "5px", background: T.surf, border: "1px solid " + T.bord, color: T.text3, padding: "5px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.05em", marginBottom: "14px" }}>
     <span className="material-symbols-outlined" style={{ fontSize: "15px" }}>edit</span>Edit
   </button>
 );
@@ -2169,10 +2169,10 @@ onChange={e => setSearch(e.target.value)}
 style={{ ...cs.inp, flex: 1, fontSize: "16px", padding: "8px 12px", minWidth: 0 }}
 />
 {search && (
-<button onClick={() => setSearch("")} style={{ background: "none", border: "1px solid " + T.bord, color: T.text2, padding: "7px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "16px", flexShrink: 0, whiteSpace: "nowrap" }}></button>
+<button onClick={() => setSearch("")} style={{ background: "none", border: "1px solid " + T.bord, color: T.text2, padding: "7px 12px", borderRadius: "4px", cursor: "pointer", fontSize: "16px", flexShrink: 0, whiteSpace: "nowrap" }}></button>
 )}
 <button onClick={() => setEditModal("logspend")}
-  style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "7px 14px", borderRadius: "6px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, whiteSpace: "nowrap" }}>
+  style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, whiteSpace: "nowrap" }}>
   <span className="material-symbols-outlined" style={{ fontSize: "16px", color: T.blue }}>add_circle</span>
   Log Spend
 </button>
@@ -2204,7 +2204,7 @@ return (
 {results.length === 0
 ? <div style={{ fontSize: "13px", color: T.text2, padding: "8px 0" }}>No results found</div>
 : results.map((r, i) => (
-<div key={i} style={{ background: T.surf, border: `1px solid ${r.color}33`, borderRadius: "10px", padding: "12px 16px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+<div key={i} style={{ background: T.surf, border: `1px solid ${r.color}33`, borderRadius: "8px", padding: "12px 16px", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
 <div style={{ flex: 1 }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: r.color, textTransform: "uppercase", marginBottom: "3px" }}>{r.section}</div>
 <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "3px" }}>{r.name}</div>
@@ -2397,8 +2397,8 @@ return (
             <div style={kpiLbl}>Discretionary Budget Used</div>
             <span style={{ fontSize: "12px", color: T.text2 }}>{Math.round(discPct)}%</span>
           </div>
-          <div style={{ background: T.bord, borderRadius: "4px", height: "8px", marginBottom: "10px" }}>
-            <div style={{ height: "100%", width: discPct + "%", background: over ? T.red : T.green, borderRadius: "4px" }} />
+          <div style={{ background: T.bord, borderRadius: "2px", height: "8px", marginBottom: "10px" }}>
+            <div style={{ height: "100%", width: discPct + "%", background: over ? T.red : T.green, borderRadius: "2px" }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <div>
@@ -2461,7 +2461,7 @@ return (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "4px", flexShrink: 0 }}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "2px", width: "70px" }}>
                       {fixedBillItems.map(function(item, idx) {
-                        return <div key={idx} style={{ width: "8px", height: "8px", borderRadius: "1px", background: item.day && item.day <= today.getDate() ? "#B8A9FF" : T.bord }} />;
+                        return <div key={idx} style={{ width: "8px", height: "8px", borderRadius: "2px", background: item.day && item.day <= today.getDate() ? "#B8A9FF" : T.bord }} />;
                       })}
                     </div>
                     <div style={{ fontSize: "12px", color: T.text2 }}>{fixedPaidCount} of {fixedBillItems.length} paid</div>
@@ -2524,8 +2524,8 @@ return (
                 <Card key={b.id} style={{ flex: "1 0 0", minWidth: "160px", marginBottom: 0, padding: "12px 14px" }}>
                   <div style={{ fontSize: "12px", color: T.text3, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.label}</div>
                   <div style={{ fontSize: "15px", fontWeight: "700", color: b.color, marginBottom: "8px" }}>{fmt(b.amount)}</div>
-                  <div style={{ background: T.bord, borderRadius: "3px", height: "5px", marginBottom: "6px" }}>
-                    <div style={{ height: "100%", width: pct + "%", background: b.color, borderRadius: "3px" }} />
+                  <div style={{ background: T.bord, borderRadius: "2px", height: "5px", marginBottom: "6px" }}>
+                    <div style={{ height: "100%", width: pct + "%", background: b.color, borderRadius: "2px" }} />
                   </div>
                   <div style={{ fontSize: "12px", color: isOver ? T.red : T.text2 }}>{isOver ? fmt(spent - b.amount) + " over" : fmt(remaining) + " left"}</div>
                 </Card>
@@ -2535,7 +2535,7 @@ return (
         </div>
       );
     })()}
-    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "12px 18px", marginBottom: "10px" }}>
+    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 18px", marginBottom: "10px" }}>
       {(() => {
         const reserveIds = ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"];
         const iconMap = {"bill008":"travel_luggage_and_bags","bill012":"health_and_beauty","bill006":"apparel","bill007":"featured_seasonal_and_gifts","bill009":"pets","bill011":"savings"};
@@ -2548,7 +2548,7 @@ return (
               <span style={{ fontSize: "12px", color: "#B8A9FF" }}>{fmt(total)}/mo earmarked</span>
             </div>
             {/* Stacked horizontal bar */}
-            <div style={{ display: "flex", height: "24px", borderRadius: "6px", overflow: "hidden", marginBottom: "14px", gap: "2px" }}>
+            <div style={{ display: "flex", height: "24px", borderRadius: "4px", overflow: "hidden", marginBottom: "14px", gap: "2px" }}>
               {reserves.map(b => (
                 <div key={b.id} title={b.label + ": $" + b.amount + "/mo"}
                   style={{ flex: b.amount, background: b.color, transition: "flex 0.3s", minWidth: "4px" }} />
@@ -2569,7 +2569,7 @@ return (
       })()}
     </div>
 
-    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", overflow: "hidden", marginBottom: "10px" }}>
+    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", overflow: "hidden", marginBottom: "10px" }}>
       <div onClick={() => setShowRef(r => !r)} style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
         <span style={{ fontSize: "12px", fontWeight: "600", color: T.text2, letterSpacing: "0.1em", textTransform: "uppercase" }}>Budget Details</span>
         <span style={{ color: T.text2, fontSize: "12px" }}>{showRef ? "^" : ""}</span>
@@ -2636,7 +2636,7 @@ return (
               <div style={{ fontSize: "20px", fontWeight: "700", color: over ? T.red : discLeft < 200 ? "#FFB347" : T.green }}>{fmt(discLeft)}</div>
             </Card>
           </div>
-          <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "16px 18px", marginBottom: "10px" }}>
+          <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px 18px", marginBottom: "10px" }}>
             {(() => {
               const buckets = discBuckets;
               const totalSpentAll = buckets.reduce((s,b) => s + (cur.spent[b.id] || 0), 0);
@@ -2668,8 +2668,8 @@ return (
                         const spentPct = Math.min(1, spent / b.amount);
                         const h = Math.max(8, Math.round(heightPct * (buckets.length * (barHeight + gap))));
                         return (
-                          <div key={b.id} style={{ position: "relative", height: `${h}px`, background: "#2a3a50", borderRadius: "3px", overflow: "hidden" }}>
-                            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${spentPct * 100}%`, background: over ? T.red : b.color, borderRadius: "3px", transition: "height 0.4s" }} />
+                          <div key={b.id} style={{ position: "relative", height: `${h}px`, background: "#2a3a50", borderRadius: "2px", overflow: "hidden" }}>
+                            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${spentPct * 100}%`, background: over ? T.red : b.color, borderRadius: "2px", transition: "height 0.4s" }} />
                           </div>
                         );
                       })}
@@ -2708,7 +2708,7 @@ return (
             const pct = Math.min(100, (spent / b.amount) * 100);
             const open = expanded === b.id;
             return (
-              <div key={b.id} style={{ background: T.surf, border: `1px solid ${over ? T.red : open ? b.color+"55" : T.bord}`, borderRadius: "10px", marginBottom: "10px", overflow: "hidden" }}>
+              <div key={b.id} style={{ background: T.surf, border: `1px solid ${over ? T.red : open ? b.color+"55" : T.bord}`, borderRadius: "8px", marginBottom: "10px", overflow: "hidden" }}>
                 <div onClick={() => setExpanded(open ? null : b.id)} style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", cursor: "pointer" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: b.color }} />
@@ -2724,8 +2724,8 @@ return (
                   </div>
                 </div>
                 <div style={{ padding: "0 18px 10px" }}>
-                  <div style={{ background: "#2a3a50", borderRadius: "4px", height: "5px" }}>
-                    <div style={{ height: "100%", width: `${pct}%`, background: over ? T.red : b.color, borderRadius: "4px", transition: "width 0.4s" }} />
+                  <div style={{ background: "#2a3a50", borderRadius: "2px", height: "5px" }}>
+                    <div style={{ height: "100%", width: `${pct}%`, background: over ? T.red : b.color, borderRadius: "2px", transition: "width 0.4s" }} />
                   </div>
                 </div>
                 {open && (
@@ -2831,7 +2831,7 @@ return (
             return (
               <div>
                 <div style={{ ...cs.lbl, marginBottom: "12px" }}>Upcoming This Month</div>
-                <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
+                <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", overflow: "hidden", marginBottom: "16px" }}>
                   {upcomingItems.length === 0
                     ? <div style={{ padding: "14px 18px", fontSize: "13px", color: T.text2 }}>All bills cleared for the month </div>
                     : (() => {
@@ -2858,7 +2858,7 @@ return (
                 {paidItems.length > 0 && (
                   <div>
                     <div style={{ ...cs.lbl, marginBottom: "12px" }}>Cleared</div>
-                    <div style={{ background: T.surf2, border: "1px solid #1a2030", borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
+                    <div style={{ background: T.surf2, border: "1px solid #1a2030", borderRadius: "8px", overflow: "hidden", marginBottom: "16px" }}>
                       {paidItems.map((item, i) => renderItem(item, i, paidItems))}
                     </div>
                   </div>
@@ -2868,7 +2868,7 @@ return (
           })()}
 
           <div style={{ ...cs.lbl, marginBottom: "12px" }}>Date Unknown</div>
-          <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", overflow: "hidden" }}>
+          <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", overflow: "hidden" }}>
             {unknownItems.map((item, i) => (
               <div key={item.name} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -2924,7 +2924,7 @@ return (
         return { ...r, d, pct: Math.round((r.amt / total) * 100) };
       });
       return (
-        <div style={{ display: "flex", alignItems: "center", gap: "24px", background: T.surf, border: "1px solid " + T.bord, borderRadius: "12px", padding: "20px 24px", marginBottom: "20px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "24px", background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "20px 24px", marginBottom: "20px", flexWrap: "wrap" }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
             <svg width={size} height={size}>
               {slices.map((s, i) => (
@@ -2975,7 +2975,7 @@ return (
         return (
           <div key={r.id} style={{ marginBottom: "10px" }}>
             <div onClick={() => setExpandedReserve(isOpen ? null : r.id)}
-              style={{ background: r.bg, border: `1px solid ${isOpen ? r.color : r.color + "88"}`, borderRadius: isOpen ? "12px 12px 0 0" : "12px", padding: "16px 20px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              style={{ background: r.bg, border: `1px solid ${isOpen ? r.color : r.color + "88"}`, borderRadius: isOpen ? "8px 8px 0 0" : "8px", padding: "16px 20px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                 <div style={{ opacity: 0.9, flexShrink: 0 }}>
                   {RESERVE_ICONS[r.id] ? RESERVE_ICONS[r.id](r.color) : null}
@@ -2993,7 +2993,7 @@ return (
               </div>
             </div>
             {isOpen && (
-              <div style={{ background: T.surf2, border: `1px solid ${r.color}88`, borderTop: "none", borderRadius: "0 0 12px 12px", overflow: "hidden" }}>
+              <div style={{ background: T.surf2, border: `1px solid ${r.color}88`, borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
                 {txs.length === 0
                   ? <div style={{ padding: "14px 18px", fontSize: "12px", color: T.text2 }}>No transactions logged for {MONTHS[month]} {year}</div>
                   : txs.map((tx, i) => (
@@ -3004,7 +3004,7 @@ return (
                       </div>
                       <div style={{ fontSize: "13px", fontWeight: "700", color: r.color, marginRight: "8px" }}>-{fmt(tx.amount)}</div>
                       <select value={tx.reserveId || ""} onChange={e => reassignTransaction(tx.id, e.target.value || null)}
-                        style={{ background: T.surf, border: `1px solid ${r.color}55`, color: T.text2, padding: "4px 8px", borderRadius: "6px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>
+                        style={{ background: T.surf, border: `1px solid ${r.color}55`, color: T.text2, padding: "4px 8px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>
                         <option value="">Unassign</option>
                         {buckets.filter(b => ["bill006", "bill007", "bill008", "bill009", "bill011", "bill012"].includes(b.id)).map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
                       </select>
@@ -3148,7 +3148,7 @@ return (
             </Card>
           </div>
           ) : (
-          <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "20px 18px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "20px 18px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "12px" }}>
             <span className="material-symbols-outlined" style={{ fontSize: "28px", color: T.muted }}>credit_card_off</span>
             <div>
               <div style={{ fontSize: "13px", color: T.text2, marginBottom: "4px" }}>No debts added yet</div>
@@ -3245,7 +3245,7 @@ return (
                                   setDebts(p => p.map(d => d.id === debt.id ? { ...d, balance: v } : d));
                                   setDebtInputs(p => ({ ...p, [debt.id + "-bal"]: "" }));
                                 }
-                              }} style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "6px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>Save</button>
+                              }} style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "6px 14px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>Save</button>
                             </div>
                           </div>
                           <div style={{ flex: "1 1 150px", maxWidth: "300px", minWidth: "150px" }}>
@@ -3261,7 +3261,7 @@ return (
                                   setDebts(p => p.map(d => d.id === debt.id ? { ...d, monthly: v, monthlyPrincipal: d.escrow > 0 ? v - d.escrow : v } : d));
                                   setDebtInputs(p => ({ ...p, [debt.id + "-mo"]: "" }));
                                 }
-                              }} style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "6px 14px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>Save</button>
+                              }} style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "6px 14px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>Save</button>
                             </div>
                           </div>
                         </div>
@@ -3283,20 +3283,20 @@ return (
     <div style={{ ...cs.lbl, marginBottom: "16px" }}>Settings</div>
 
     {/* Budget Setup */}
-    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "16px 18px", marginBottom: "10px" }}>
+    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px 18px", marginBottom: "10px" }}>
       <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "4px" }}>Budget Setup</div>
       <div style={{ fontSize: "12px", color: T.text3, marginBottom: "14px" }}>Re-run the setup wizard. Your current budget will be pre-filled so you can adjust it.</div>
-      <button onClick={onRerunWizard} style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 16px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px" }}>
+      <button onClick={onRerunWizard} style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 16px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px" }}>
         <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>tune</span>
         Edit Budget Setup
       </button>
     </div>
 
     {/* Appearance */}
-    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "16px 18px", marginBottom: "10px" }}>
+    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px 18px", marginBottom: "10px" }}>
       <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "4px" }}>Appearance</div>
       <div style={{ fontSize: "12px", color: T.text3, marginBottom: "14px" }}>Choose dark, light, or match your device setting.</div>
-      <div style={{ display: "flex", gap: "0", border: "1px solid " + T.bord, borderRadius: "6px", overflow: "hidden" }}>
+      <div style={{ display: "flex", gap: "0", border: "1px solid " + T.bord, borderRadius: "4px", overflow: "hidden" }}>
         {[["dark", "Dark", "dark_mode"], ["light", "Light", "light_mode"], ["system", "System", "settings_brightness"]].map(function(opt) {
           var val = opt[0], label = opt[1], icon = opt[2];
           var active = themePref === val;
@@ -3309,7 +3309,7 @@ return (
     </div>
 
     {/* Data */}
-    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "10px", padding: "16px 18px", marginBottom: "10px" }}>
+    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px 18px", marginBottom: "10px" }}>
       <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "4px" }}>Data & Storage</div>
       <div style={{ fontSize: "12px", color: T.text3, marginBottom: "14px" }}>Your data is stored only on this device, never sent to a server.</div>
 
@@ -3448,13 +3448,13 @@ return (
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-      }} style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", flex: 1, minHeight: "48px", textAlign: "center", flexWrap: "wrap" }}>
+      }} style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", flex: 1, minHeight: "48px", textAlign: "center", flexWrap: "wrap" }}>
         <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>download</span>
         Export (CSV)
       </button>
 
       {/* Import CSV */}
-      <label style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", flex: 1, minHeight: "48px", textAlign: "center", flexWrap: "wrap" }}>
+      <label style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", flex: 1, minHeight: "48px", textAlign: "center", flexWrap: "wrap" }}>
         <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>upload</span>
         Import (CSV)
         <input type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={function(ev) {
@@ -3685,11 +3685,11 @@ return (
       </div>
 
       <div style={{ display: "flex", gap: "10px" }}>
-      <button onClick={() => { if (window.confirm("Clear all spend data? Your budget setup will be kept.")) { setData(getDefaultData()); setDebts([]); saveData(getDefaultData()); saveDebts([]); setTab("overview"); } }} style={{ background: "transparent", border: "1px solid " + T.red, color: T.red, padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", flex: 1, minHeight: "48px", textAlign: "center", flexWrap: "wrap" }}>
+      <button onClick={() => { if (window.confirm("Clear all spend data? Your budget setup will be kept.")) { setData(getDefaultData()); setDebts([]); saveData(getDefaultData()); saveDebts([]); setTab("overview"); } }} style={{ background: "transparent", border: "1px solid " + T.red, color: T.red, padding: "8px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", flex: 1, minHeight: "48px", textAlign: "center", flexWrap: "wrap" }}>
         <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>delete_sweep</span>
         Clear Spend Data
       </button>
-      <button onClick={() => { if (window.confirm("Reset everything? This will erase all your data and return to the setup screen.")) { onReset(); } }} style={{ background: "transparent", border: "1px solid " + T.red, color: T.red, padding: "8px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", flex: 1, minHeight: "48px", textAlign: "center", flexWrap: "wrap" }}>
+      <button onClick={() => { if (window.confirm("Reset everything? This will erase all your data and return to the setup screen.")) { onReset(); } }} style={{ background: "transparent", border: "1px solid " + T.red, color: T.red, padding: "8px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", flex: 1, minHeight: "48px", textAlign: "center", flexWrap: "wrap" }}>
         <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>delete_forever</span>
         Reset Everything
       </button>
@@ -3792,7 +3792,7 @@ return (
           <div style={{ fontSize: "22px", fontWeight: "700", color: T.text1 }}>{fmt(totalIncomeCfg)}</div>
         </div>
 
-        <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "18px", padding: "16px", overflowX: "auto" }}>
+        <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px", overflowX: "auto" }}>
           <svg width={viewWidth} height={viewHeight} viewBox={`0 0 ${viewWidth} ${viewHeight}`} style={{ display: "block", maxWidth: "100%" }}>
             {layout.links.map((link, i) => (
               <path key={"link-" + i} d={linkPath(link)} fill="none" stroke={colorMap[link.source.id] || T.text3} strokeWidth={Math.max(4, link.width)}
@@ -3854,7 +3854,7 @@ return (
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "10px", marginTop: "16px" }}>
           {categories.map(cat => (
-            <div key={cat.key} style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "12px", padding: "14px" }}>
+            <div key={cat.key} style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "8px", padding: "14px" }}>
               <div style={{ fontSize: "11px", color: cat.color, fontWeight: "700", marginBottom: "10px", textTransform: "uppercase" }}>{cat.label}</div>
               <div style={{ fontSize: "18px", fontWeight: "700", color: T.text1, marginBottom: "6px" }}>{fmt(cat.value)}</div>
               <div style={{ fontSize: "12px", color: T.text2 }}>{Math.round((cat.value / total) * 100)}% of income</div>
