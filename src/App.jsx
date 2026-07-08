@@ -1658,9 +1658,9 @@ const renderModalOverlay = (title, content) => (
 const renderInfoModal = (title, content, onClose) => {
   const close = onClose || (() => setShowFlowInfo(false));
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0" }}
       onClick={e => { if (e.target === e.currentTarget) close(); }}>
-      <div style={{ background: T.surf, borderRadius: "16px 16px 0 0", width: "100%", maxWidth: "760px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: T.surf, borderRadius: "16px", width: "100%", maxWidth: "760px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{title}</span>
           <button onClick={close} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -1789,9 +1789,9 @@ const renderDebtInfoModal = () => {
 
 // Log Spend modal
 const renderLogSpend = () => (
-  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0" }}
     onClick={e => { if (e.target === e.currentTarget) setEditModal(null); }}>
-    <div style={{ background: T.surf, borderRadius: "16px 16px 0 0", width: "100%", maxWidth: "600px", display: "flex", flexDirection: "column" }}>
+    <div style={{ background: T.surf, borderRadius: "16px", width: "100%", maxWidth: "600px", maxHeight: "85vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
         <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>Log Transaction</span>
         <button onClick={() => setEditModal(null)} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -2171,6 +2171,11 @@ style={{ ...cs.inp, flex: 1, fontSize: "16px", padding: "8px 12px", minWidth: 0 
 {search && (
 <button onClick={() => setSearch("")} style={{ background: "none", border: "1px solid " + T.bord, color: T.text2, padding: "7px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "16px", flexShrink: 0, whiteSpace: "nowrap" }}></button>
 )}
+<button onClick={() => setEditModal("logspend")}
+  style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "7px 14px", borderRadius: "6px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, whiteSpace: "nowrap" }}>
+  <span className="material-symbols-outlined" style={{ fontSize: "16px", color: T.blue }}>add_circle</span>
+  Log Spend
+</button>
 </div>
 {search.trim().length > 0 && (() => {
 const q = search.trim().toLowerCase();
@@ -2216,16 +2221,6 @@ return (
 </div>
 );
 })()}
-
-{/*  Log Transaction  */}
-
-  <div style={{ padding: "8px 24px", borderBottom: "1px solid " + T.bord }}>
-    <button onClick={() => setEditModal("logspend")}
-      style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "6px 14px", borderRadius: "6px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: "6px" }}>
-      <span className="material-symbols-outlined" style={{ fontSize: "16px", color: T.blue }}>add_circle</span>
-      Log Spend
-    </button>
-  </div>
 
   <div className="budget-tabs" style={cs.tabs}>
     {[["overview","Overview"],["discretionary","Discretionary"],["fixed","Fixed"],["reserves","Reserves"],["debt","Debt Repayment"],["settings","Settings"]].map(([t, label]) => (
