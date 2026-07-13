@@ -2256,13 +2256,17 @@ return (
       const RESERVE_IDS_LIST = ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"];
       const bankedYTD = RESERVE_IDS_LIST.reduce((s, id) => s + getReserveBal(id), 0);
 
-      const fixedCommitted = (buckets.find(b => b.id === "bills") ? buckets.find(b => b.id === "bills").amount : 0) || 0;
       const fixedBillItems = ((buckets.find(b => b.id === "bills") && buckets.find(b => b.id === "bills").items) || []).filter(i => i.amt > 0);
+      const fixedCommitted = Math.round(fixedBillItems.filter(i => i.note !== "cc").reduce((s, i) => s + i.amt, 0) * 100) / 100;
       const fixedPaidCount = fixedBillItems.filter(i => i.day && i.day <= today.getDate()).length;
 
       const reservesTotal = RESERVE_IDS_LIST.reduce((s,id) => { const b = buckets.find(x => x.id === id); return s + (b ? b.amount : 0); }, 0);
-      const debtPaymentTotal = debts.reduce((s,d) => s + (d.monthly || 0), 0);
-      const leftover = Math.max(0, totalIncomeCfg - fixedCommitted - discBudget - reservesTotal - debtPaymentTotal);
+      const linkedBillNames = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
+      const linkedDiscIds = new Set(debts.filter(d => d.linkedType === "discretionary" && d.linkedBucketId).map(d => d.linkedBucketId));
+      const fixedFlowTotal = Math.round(fixedBillItems.filter(i => i.note !== "cc" && !linkedBillNames.has(i.name)).reduce((s, i) => s + i.amt, 0) * 100) / 100;
+      const discFlowTotal = discBuckets.filter(b => !linkedDiscIds.has(b.id)).reduce((s, b) => s + b.amount, 0);
+      const debtPaymentTotal = Math.round((fixedBillItems.filter(i => i.note !== "cc" && linkedBillNames.has(i.name)).reduce((s, i) => s + i.amt, 0) + discBuckets.filter(b => linkedDiscIds.has(b.id)).reduce((s, b) => s + b.amount, 0)) * 100) / 100;
+      const leftover = Math.max(0, totalIncomeCfg - fixedFlowTotal - discFlowTotal - reservesTotal - debtPaymentTotal);
       const treeDenom = totalIncomeCfg > 0 ? totalIncomeCfg : 1;
 
       const kpiLbl = { fontSize: "12px", color: T.text3, letterSpacing: "0.12em", textTransform: "uppercase" };
@@ -2280,11 +2284,11 @@ return (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "stretch", minWidth: "140px", alignSelf: "stretch" }}>
             {(() => {
               const flowItems = [
-                { label: "Fixed", value: fixedCommitted, color: "#4A9EFF" },
-                { label: "Disc", value: discBudget, color: "#FFB347" },
+                { label: "Fixed", value: fixedFlowTotal, color: "#4A9EFF" },
+                { label: "Disc", value: discFlowTotal, color: "#FFB347" },
                 { label: "Reserves", value: reservesTotal, color: "#C084FC" },
                 { label: "Debt", value: debtPaymentTotal, color: "#FF6B9D" },
-                { label: "Leftover", value: leftover, color: "#2C8C76" },
+                { label: "Unallocated", value: leftover, color: T.text3 },
               ].filter(item => item.value > 0);
 
               if (flowItems.length === 0) return <div style={{ color: T.text2 }}>No allocation data</div>;
@@ -2544,7 +2548,7 @@ return (
         return (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
-              <span style={{ ...cs.lbl, marginBottom: 0 }}>Savings & Reserves</span>
+              <span style={{ ...cs.lbl, marginBottom: 0 }}>Reserves & Savings</span>
               <span style={{ fontSize: "12px", color: "#B8A9FF" }}>{fmt(total)}/mo earmarked</span>
             </div>
             {/* Stacked horizontal bar */}
@@ -2570,39 +2574,67 @@ return (
     </div>
 
     <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", overflow: "hidden", marginBottom: "10px" }}>
-      <div onClick={() => setShowRef(r => !r)} style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+      <div onClick={() => setShowRef(r => !r)} style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+        <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.text2 }}>{showRef ? "keyboard_arrow_up" : "keyboard_arrow_down"}</span>
         <span style={{ fontSize: "12px", fontWeight: "600", color: T.text2, letterSpacing: "0.1em", textTransform: "uppercase" }}>Budget Details</span>
-        <span style={{ color: T.text2, fontSize: "12px" }}>{showRef ? "^" : ""}</span>
       </div>
-      {showRef && (
-        <div style={{ borderTop: "1px solid " + T.bord, padding: "4px 0 8px" }}>
-          {[
-            { group: "Fixed", color: T.blue, items:
-              ((buckets.find(b => b.id === "bills") && buckets.find(b => b.id === "bills").items) || []).filter(i => i.amt > 0 && i.note !== "cc").map(i => ({ label: i.name, amt: i.amt }))
-            },
-            { group: "Discretionary", color: "#FFB347", items:
-              buckets.filter(b => ["bill001","bill002","bill003","bill004","bill005"].includes(b.id) && b.amount > 0).map(b => ({ label: b.label, amt: b.amount }))
-            },
-            { group: "Reserves & Savings", color: "#B8A9FF", items:
-              buckets.filter(b => ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"].includes(b.id) && b.amount > 0).map(b => ({ label: b.label, amt: b.amount }))
-            },
-          ].map(group => (
-            <div key={group.group}>
-              <div style={{ padding: "8px 18px 4px", fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase" }}>{group.group}</div>
-              {group.items.map(item => (
-                <div key={item.label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 18px", borderBottom: "1px solid " + T.bord }}>
-                  <span style={{ fontSize: "12px", color: T.text3 }}>{item.label}</span>
-                  <span style={{ fontSize: "12px", color: T.text1, fontWeight: "600" }}>{fmt(item.amt)}/mo</span>
+      {showRef && (() => {
+        const linkedBillNames = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
+        const linkedDiscIds = new Set(debts.filter(d => d.linkedType === "discretionary" && d.linkedBucketId).map(d => d.linkedBucketId));
+        const refBillItems = ((buckets.find(b => b.id === "bills") && buckets.find(b => b.id === "bills").items) || []).filter(i => i.amt > 0 && i.note !== "cc");
+        const refDiscBuckets = buckets.filter(b => ["bill001","bill002","bill003","bill004","bill005"].includes(b.id) && b.amount > 0);
+        const refGroups = [
+          { group: "Fixed", color: T.blue, items:
+            refBillItems.filter(i => !linkedBillNames.has(i.name)).map(i => ({ label: i.name, amt: i.amt }))
+          },
+          { group: "Discretionary", color: "#FFB347", items:
+            refDiscBuckets.filter(b => !linkedDiscIds.has(b.id)).map(b => ({ label: b.label, amt: b.amount }))
+          },
+          { group: "Reserves & Savings", color: "#B8A9FF", items:
+            buckets.filter(b => ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"].includes(b.id) && b.amount > 0).map(b => ({ label: b.label, amt: b.amount }))
+          },
+          { group: "Debt Repayment", color: "#FF6B9D", items:
+            refBillItems.filter(i => linkedBillNames.has(i.name)).map(i => ({ label: i.name, amt: i.amt }))
+              .concat(refDiscBuckets.filter(b => linkedDiscIds.has(b.id)).map(b => ({ label: b.label, amt: b.amount })))
+          },
+        ].filter(group => group.items.length > 0);
+        const refTotal = refGroups.reduce((s, g) => s + g.items.reduce((t, i) => t + i.amt, 0), 0);
+        const refUnallocated = Math.round((totalIncomeCfg - refTotal) * 100) / 100;
+        return (
+        <div style={{ borderTop: "1px solid " + T.bord, padding: "14px 18px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+            {refGroups.map(group => {
+              const subtotal = group.items.reduce((s, i) => s + i.amt, 0);
+              return (
+                <div key={group.group} style={{ flex: "1 1 240px", maxWidth: "300px", display: "flex", flexDirection: "column", background: T.bg, border: "1px solid " + T.bord, borderRadius: "8px", overflow: "hidden" }}>
+                  <div style={{ padding: "8px 12px", background: T.surf, borderBottom: "1px solid " + T.bord, fontSize: "12px", letterSpacing: "0.15em", color: T.text2, textTransform: "uppercase" }}>{group.group}</div>
+                  {group.items.map(item => (
+                    <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: "8px", padding: "6px 12px", borderBottom: "1px solid " + T.bord }}>
+                      <span style={{ fontSize: "12px", color: T.text3 }}>{item.label}</span>
+                      <span style={{ fontSize: "12px", color: T.text3, whiteSpace: "nowrap" }}>{fmt(item.amt)}/mo</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", padding: "8px 12px", marginTop: "auto" }}>
+                    <span style={{ fontSize: "12px", color: T.text2 }}>Subtotal</span>
+                    <span style={{ fontSize: "12px", color: group.color, whiteSpace: "nowrap" }}>{fmt(subtotal)}/mo</span>
+                  </div>
                 </div>
-              ))}
+              );
+            })}
+          </div>
+          {refUnallocated !== 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "12px", marginTop: "12px", borderTop: "1px solid " + T.bord }}>
+              <span style={{ fontSize: "12px", color: T.text3 }}>Unallocated</span>
+              <span style={{ fontSize: "12px", color: T.text3 }}>{fmt(refUnallocated)}/mo</span>
             </div>
-          ))}
-          <div style={{ padding: "10px 18px 4px", display: "flex", justifyContent: "space-between", borderTop: "1px solid " + T.bord, marginTop: "4px" }}>
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "12px", marginTop: refUnallocated !== 0 ? "8px" : "12px", borderTop: "1px solid " + T.bord }}>
             <span style={{ fontSize: "12px", fontWeight: "700", color: T.text1 }}>Total</span>
-            <span style={{ fontSize: "12px", fontWeight: "700", color: T.blue }}>{fmt(totalIncomeCfg)}/mo</span>
+            <span style={{ fontSize: "12px", fontWeight: "700", color: T.blue }}>{fmt(refTotal)}/mo</span>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   </div>
 )}
@@ -3702,26 +3734,33 @@ return (
   (() => {
     // Self-contained so the modal does not depend on the Overview tab's locals.
     const bills = buckets.find(b => b.id === "bills");
-    const fixedCommitted = (bills ? bills.amount : 0) || 0;
-    const fixedBillItems = ((bills && bills.items) || []).filter(i => i.amt > 0);
+    const linkedBillNames = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
+    const linkedDiscIds = new Set(debts.filter(d => d.linkedType === "discretionary" && d.linkedBucketId).map(d => d.linkedBucketId));
+    const allBillItems = ((bills && bills.items) || []).filter(i => i.amt > 0 && i.note !== "cc");
+    const fixedBillItems = allBillItems.filter(i => !linkedBillNames.has(i.name));
+    const fixedCommitted = Math.round(fixedBillItems.reduce((s, i) => s + i.amt, 0) * 100) / 100;
     const discIds = ["bill001","bill002","bill003","bill004","bill005"];
     const RESERVE_IDS_LIST = ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"];
-    const discBudget = buckets.filter(b => discIds.includes(b.id) && b.amount > 0).reduce((s, b) => s + b.amount, 0);
+    const allDiscBuckets = buckets.filter(b => discIds.includes(b.id) && b.amount > 0);
+    const discBudget = allDiscBuckets.filter(b => !linkedDiscIds.has(b.id)).reduce((s, b) => s + b.amount, 0);
     const reservesTotal = RESERVE_IDS_LIST.reduce((s, id) => { const b = buckets.find(x => x.id === id); return s + (b ? b.amount : 0); }, 0);
-    const debtPaymentTotal = debts.reduce((s, d) => s + (d.monthly || 0), 0);
-    const leftover = Math.max(0, totalIncomeCfg - fixedCommitted - discBudget - reservesTotal - debtPaymentTotal);
+    const debtItems = allBillItems.filter(i => linkedBillNames.has(i.name)).map(i => ({ label: i.name, value: i.amt, color: "#FF6B9D" }))
+      .concat(allDiscBuckets.filter(b => linkedDiscIds.has(b.id)).map(b => ({ label: b.label, value: b.amount, color: "#FF6B9D" })));
+    const debtPaymentTotal = Math.round(debtItems.reduce((s, i) => s + i.value, 0) * 100) / 100;
+    const rawLeftover = Math.round((totalIncomeCfg - fixedCommitted - discBudget - reservesTotal - debtPaymentTotal) * 100) / 100;
+    const leftover = Math.max(0, rawLeftover);
     const total = totalIncomeCfg || 1;
 
     const categories = [
       { key: "fixed", label: "Fixed", value: fixedCommitted, color: T.blue, items: fixedBillItems.map(item => ({ label: item.name, value: item.amt, color: T.blue, group: item.category || "Other" })) },
-      { key: "discretionary", label: "Discretionary", value: discBudget, color: "#FFB347", items: buckets.filter(b => discIds.includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
+      { key: "discretionary", label: "Discretionary", value: discBudget, color: "#FFB347", items: allDiscBuckets.filter(b => !linkedDiscIds.has(b.id)).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
       { key: "reserves", label: "Reserves", value: reservesTotal, color: "#B8A9FF", items: buckets.filter(b => RESERVE_IDS_LIST.includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
     ].filter(group => group.value > 0);
     if (debtPaymentTotal > 0) {
-      categories.push({ key: "debt", label: "Debt Repayment", value: debtPaymentTotal, color: "#FF6B9D", items: debts.filter(d => (d.monthly || 0) > 0).map(d => ({ label: d.name || "Debt", value: d.monthly, color: "#FF6B9D" })) });
+      categories.push({ key: "debt", label: "Debt Repayment", value: debtPaymentTotal, color: "#FF6B9D", items: debtItems });
     }
     if (leftover > 0) {
-      categories.push({ key: "leftover", label: "Leftover", value: leftover, color: T.green, items: [{ label: "Leftover cash", value: leftover, color: T.green }] });
+      categories.push({ key: "leftover", label: "Unallocated", value: leftover, color: T.text3, items: [{ label: "Unallocated cash", value: leftover, color: T.text3 }] });
     }
 
     const sankeyNodes = [];
@@ -3860,6 +3899,13 @@ return (
               <div style={{ fontSize: "12px", color: T.text2 }}>{Math.round((cat.value / total) * 100)}% of income</div>
             </div>
           ))}
+          {rawLeftover < 0 && (
+            <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "8px", padding: "14px" }}>
+              <div style={{ fontSize: "11px", color: T.text3, fontWeight: "700", marginBottom: "10px", textTransform: "uppercase" }}>Unallocated</div>
+              <div style={{ fontSize: "18px", fontWeight: "700", color: T.text3, marginBottom: "6px" }}>{fmt(rawLeftover)}</div>
+              <div style={{ fontSize: "12px", color: T.text2 }}>allocations exceed income</div>
+            </div>
+          )}
         </div>
       </div>
     );
