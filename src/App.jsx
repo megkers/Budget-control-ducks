@@ -2428,7 +2428,7 @@ return (
       const debtCard = debts.length > 0 ? (() => {
         const monthsElapsed = (year - setupYear) * 12 + (month - setupMonth) + 1;
         const dw = buildDebtWindow(debts, monthsElapsed);
-        const PINK = "#FF6B9D";
+        const PINK = "#FF6B9D", SLATE = "#3D4657";
         const w = 160, h = 66;
         const niceMax = (dw.startTotal || 1) * 1.1;
         const xF = (i) => (i / dw.N) * w;
@@ -2437,6 +2437,7 @@ return (
         const paidArea = "M 0 " + h + " L " + paidPts.join(" L ") + " L " + w + " " + h + " Z";
         const paidLine = "M " + paidPts.join(" L ");
         const totalY = yF(dw.startTotal);
+        const remainArea = "M 0 " + totalY.toFixed(1) + " L " + w + " " + totalY.toFixed(1) + " L " + paidPts.slice().reverse().join(" L ") + " Z";
         return (
           <Card style={{ marginBottom: 0, padding: "14px 16px", minWidth: "340px", cursor: "pointer", ...(isB ? { flex: "1 0 0", minHeight: "115px", display: "flex", flexDirection: "column" } : {}) }} onClick={() => setShowDebtInfo(true)}>
             <div style={{ ...kpiLbl, marginBottom: "8px", whiteSpace: "nowrap" }}>Debt Paid (Last 12M)</div>
@@ -2447,6 +2448,7 @@ return (
               </div>
               <div style={{ flex: 1, minWidth: "110px", alignSelf: "stretch", display: "flex", minHeight: "56px" }}>
                 <svg viewBox={"0 0 " + w + " " + h} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
+                  <path d={remainArea} fill={SLATE} opacity="0.85" />
                   <path d={paidArea} fill={PINK} opacity="0.85" />
                   <path d={paidLine} fill="none" stroke={PINK} strokeWidth="2" />
                   <line x1="0" y1={totalY} x2={w} y2={totalY} stroke={T.text2} strokeWidth="1.5" strokeDasharray="4 3" />
