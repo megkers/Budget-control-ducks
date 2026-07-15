@@ -71,7 +71,7 @@ On first load, the app walks you through a 7-step setup wizard to initialize you
 
 **Your data never leaves your device.** Budget Control:
 
-- Makes no API calls (except to load Google Fonts and Material Icons)
+- Makes no API calls — the only network requests are to the Google Fonts CDN for DM Mono and Material Symbols icons. All charts (including the money flow sankey) are inline SVG computed locally from your data
 - Stores everything in browser localStorage
 - Has no backend server or database
 - Does not track you or collect analytics
