@@ -26,7 +26,6 @@ This is a single-file React app (~3,500 lines) built for simplicity and portabil
 - **localStorage** (no backend, no API calls)
 - **SVG** (interactive diagrams, no charting library)
 - **DM Mono** (typography via Google Fonts CDN)
-- **Skystra** (deployment)
 
 ## Quick start
 
@@ -45,17 +44,9 @@ npm run build
 
 Then open [http://localhost:5173](http://localhost:5173).
 
-### Deploy to Skystra
+### Deploying
 
-```bash
-# Build locally
-npm run build
-
-# Deploy
-skystra deploy --prod --dir=dist
-```
-
-Or push to GitHub and connect your repo to Skystra for continuous deployment.
+Budget Control is a fully static Vite build — no backend required. Run `npm run build` and host the `dist/` folder on any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, or your own server).
 
 ## Data model
 
@@ -118,6 +109,13 @@ Root
 - Promo APR tracking for 0% credit cards with expiry alerts
 - Service worker for offline support
 - Post-wizard debt management flow
+
+## Feedback
+
+Using Budget Control? I'd love to hear how it's going — what works, what doesn't, what's missing:
+
+- **[Fill out the quick survey →](https://docs.google.com/forms/d/e/1FAIpQLSc71ZobqLMh8TxVX6D_nbEbSuAcIaMuWMurNU_SpLZzmRz8eg/viewform?usp=header)**
+- Or [open an issue](../../issues) with comments, bug reports, or feature ideas
 
 ## License
 
