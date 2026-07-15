@@ -2303,22 +2303,29 @@ return (
               const miniLayout = d3Sankey()
                 .nodeId(d => d.id)
                 .nodeWidth(isB ? 14 : 10)
-                .nodePadding(isB ? 6 : 3)
-                .extent([[4, 2], [svgWidth - 4, svgHeight - 2]])
+                .nodePadding(3)
+                .extent([[4, 0], [svgWidth - 4, svgHeight]])
                 ({ nodes: miniNodes.map(d => ({ ...d })), links: miniLinks.map(d => ({ ...d })) });
 
               // The Income "node" is rendered as an HTML block (below) so its amount label
               // stays a real, fixed pixel size. Collapse its SVG node to the left edge so
-              // the flow links originate flush against that block.
+              // the flow links originate flush against that block, and re-center it
+              // vertically (d3 skews it toward the largest flows) so the link fan shares
+              // the block's vertical center.
               const incomeAmtStr = fmt(totalIncomeCfg);
               const incomeNode = miniLayout.nodes.find(n => n.id === "Income");
-              if (incomeNode) { incomeNode.x0 = 0; incomeNode.x1 = 0; }
+              if (incomeNode) {
+                incomeNode.x0 = 0; incomeNode.x1 = 0;
+                const dy = (svgHeight - (incomeNode.y1 - incomeNode.y0)) / 2 - incomeNode.y0;
+                incomeNode.y0 += dy; incomeNode.y1 += dy;
+                miniLayout.links.forEach(l => { if (l.source.id === "Income") l.y0 += dy; });
+              }
 
               const miniLinkPath = sankeyLinkHorizontal();
 
               return (
                 <div style={{ position: "relative", width: "100%", flex: 1, minHeight: svgHeight + "px", display: "flex", alignItems: "stretch", gap: "6px" }}>
-                  <div style={{ background: miniColorMap.Income, borderRadius: "2px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: isB ? "0 14px" : "0 8px", minWidth: isB ? "70px" : "48px" }}>
+                  <div style={{ background: miniColorMap.Income, borderRadius: "1px", flexShrink: 0, alignSelf: "center", height: "90%", display: "flex", alignItems: "center", justifyContent: "center", padding: isB ? "0 14px" : "0 8px", minWidth: isB ? "70px" : "48px" }}>
                     <div style={{ ...(isB ? kpiAmt : { fontSize: "12px", fontWeight: "700", lineHeight: 1 }), color: T.bg, whiteSpace: "nowrap" }}>{incomeAmtStr}</div>
                   </div>
                   <svg viewBox={"0 0 " + svgWidth + " " + svgHeight} preserveAspectRatio="none" style={{ flex: 1, minWidth: 0, height: "100%", cursor: "pointer" }}>
@@ -2350,7 +2357,7 @@ return (
                           y={node.y0}
                           width={w}
                           height={h}
-                          rx={2}
+                          rx={1}
                           fill={miniColorMap[node.id]}
                           opacity={isHovered ? 0.95 : 0.9}
                           style={{ transition: "opacity 0.2s" }}
@@ -3851,7 +3858,7 @@ return (
               const dim = hoverEnds && hoverEnds.indexOf(node.id) === -1;
               return (
                 <g key={node.id} style={{ opacity: dim ? 0.2 : 1, transition: "opacity 0.15s", pointerEvents: "none" }}>
-                  <rect x={node.x0} y={node.y0} width={node.x1 - node.x0} height={h} rx={Math.min(6, h / 2)} fill={col} opacity={0.85} />
+                  <rect x={node.x0} y={node.y0} width={node.x1 - node.x0} height={h} rx={1} fill={col} opacity={0.85} />
                   {isLeft && h > 18 && (
                     <>
                       <text x={node.x0 + nodeWidth + 8} y={node.y0 + h / 2 - 7} fill={T.text1} fontSize="10" fontWeight="700" dominantBaseline="middle">{label}</text>
