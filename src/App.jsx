@@ -645,7 +645,7 @@ useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [st
 return (
 <div style={{ minHeight: "100vh", background: T.bg, color: T.text1, fontFamily: "DM Mono, monospace", display: "flex", flexDirection: "column" }}>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&family=DM+Mono:wght@400;500&display=block" rel="stylesheet" />
-<style>{`.material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; display: inline-block; line-height: 1; text-transform: none; letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr; }`}</style>
+<style>{`.material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; display: inline-block; line-height: 1; text-transform: none; letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr; } input[type="date"] { text-align: left; } input[type="date"]::-webkit-date-and-time-value { text-align: left; }`}</style>
 <div style={{ borderBottom: "1px solid " + T.bord, padding: "16px 24px 0" }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.2em", color: T.text3, textTransform: "uppercase" }}>Budget Setup</div>
@@ -659,6 +659,7 @@ return (
 </div>
 {totalIncome > 0 && stepIdx >= 2 && (
 <div style={{ padding: "10px 24px", borderBottom: "1px solid " + T.bord, background: T.bg }}>
+<div style={{ background: T.surf, border: "1px solid " + (over ? T.red + "55" : T.bord), borderRadius: "8px", padding: "10px 14px" }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
 <span style={{ fontSize: "12px", color: T.text3, letterSpacing: "0.1em", textTransform: "uppercase" }}>Allocated</span>
 <span style={{ fontSize: "12px", fontWeight: "700", color: over ? T.red : T.text1 }}>
@@ -702,6 +703,7 @@ return (
 </div>
 )}
 </div>
+</div>
 )}
 <div ref={scrollRef} style={{ flex: 1, padding: "24px 24px 100px", maxWidth: "600px", overflowY: "auto" }}>
 <div style={{ fontSize: "20px", fontWeight: "700", color: T.text1, marginBottom: "4px" }}>{title}</div>
@@ -728,7 +730,20 @@ function OnboardingWizard({ onDone, onBack, initialConfig }) {
 const STEPS = ["income", "howbudgets", "bills", "discretionary", "reserves", "debt", "review"];
 const [step, setStep] = useState("income");
 const stepIdx = STEPS.indexOf(step);
-const next = () => setStep(STEPS[stepIdx + 1]);
+// Snapshot of which rows to show on the review step, captured on entry so a
+// row doesn't disappear mid-edit when its amount input is cleared
+const [reviewKeys, setReviewKeys] = useState(null);
+const next = () => {
+const target = STEPS[stepIdx + 1];
+if (target === "review") {
+setReviewKeys({
+bills: bills.map((b, i) => ({ b, i })).filter(({ b }) => b.name.trim() && parseFloat(b.amt) > 0 && b.note !== "cc").map(({ i }) => i),
+disc: disc.filter(b => parseFloat(b.amount) > 0).map(b => b.id),
+res: reserves.filter(b => parseFloat(b.amount) > 0).map(b => b.id),
+});
+}
+setStep(target);
+};
 const prev = () => stepIdx > 0 ? setStep(STEPS[stepIdx - 1]) : onBack();
 
 const FREQ = { weekly: 52/12, biweekly: 26/12, semimonthly: 2, monthly: 1 };
@@ -1176,7 +1191,12 @@ const renderDebtDetail = (d, onChange) => (
 );
 
 return (
-  <WizardShell {...shellProps} title="Debts" subtitle="Select any bills or spending categories that are paying down a debt. We'll track the balance and project your payoff date. You can skip this and add debts later from the Debt tab." canNext={true} onNext={next}>
+  <WizardShell {...shellProps} title="Debts (Optional)" subtitle="Do you want to track your debts? Select any bills or spending categories that are paying down a debt. We'll track the balance and project your payoff date. You can skip this and add debts later from the Debt tab." canNext={true} onNext={next}>
+
+    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", display: "flex", alignItems: "flex-start", gap: "8px" }}>
+      <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.green, flexShrink: 0, marginTop: "1px" }}>lightbulb</span>
+      <span style={{ fontSize: "12px", color: T.text2, lineHeight: "1.5" }}>It's important to pay something toward every debt monthly, even if it's $5.</span>
+    </div>
 
     {filledBills.length > 0 && (
       <div style={{ marginBottom: "20px" }}>
@@ -1228,7 +1248,7 @@ return (
 
     {manualDebts.length > 0 && (
       <div style={{ marginBottom: "12px" }}>
-        <div style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color: T.text3, marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid " + T.bord }}>Other debts</div>
+        <div style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color: T.text3, marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid " + T.bord }}>Add more debts</div>
         {manualDebts.map((d, i) => (
           <div key={d.id} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 14px", marginBottom: "8px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
@@ -1272,8 +1292,30 @@ return (
 // -- Step: review --
 if (step === "review") {
 const fmt0 = n => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+// Fallback if the step is ever reached without a snapshot
+const rk = reviewKeys || {
+bills: bills.map((b, i) => ({ b, i })).filter(({ b }) => b.name.trim() && parseFloat(b.amt) > 0 && b.note !== "cc").map(({ i }) => i),
+disc: disc.filter(b => parseFloat(b.amount) > 0).map(b => b.id),
+res: reserves.filter(b => parseFloat(b.amount) > 0).map(b => b.id),
+};
+const rowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "7px 0", borderBottom: "1px solid " + T.bord + "55" };
+const rowName = { fontSize: "13px", color: T.text1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const rowInp = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "6px 8px", borderRadius: "4px", fontSize: "14px", width: "90px", textAlign: "right", fontFamily: "DM Mono, monospace" };
+const perMo = <span style={{ fontSize: "12px", color: T.text3, flexShrink: 0 }}>/mo</span>;
+const section = (label, color, total, targetStep, rows) => (
+<div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 14px", marginBottom: "10px" }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "8px", borderBottom: "1px solid " + T.bord }}>
+<span style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color }}>{label}</span>
+<div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+<span style={{ fontSize: "12px", fontWeight: "700", color: T.text2 }}>{fmt0(total)}/mo</span>
+<button onClick={() => setStep(targetStep)} style={{ background: "none", border: "none", color: T.blue, fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", textDecoration: "underline", padding: 0 }}>Edit step</button>
+</div>
+</div>
+{rows}
+</div>
+);
 return (
-<WizardShell {...shellProps} title="Review your budget" subtitle="Everything looks right? Hit Launch to get started." canNext={unallocated >= 0} onNext={finish}>
+<WizardShell {...shellProps} title="Review your budget" subtitle="Everything looks right? Adjust any amount below and the totals update as you type. Hit Launch to get started." canNext={unallocated >= 0} onNext={finish}>
 <div style={{ background: T.surf, border: "1px solid " + T.blueBord, borderRadius: "8px", padding: "14px 16px", marginBottom: "10px" }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
 <span style={{ fontSize: "12px", color: T.text3 }}>Total income</span>
@@ -1311,10 +1353,72 @@ var current = parseFloat(r.amount) || 0;
 return { ...r, amount: String(Math.round((current + added) * 100) / 100) };
 });
 });
+// Make sure General Savings shows up in the review list below
+setReviewKeys(function(prev) {
+if (!prev || prev.res.indexOf("bill011") >= 0) return prev;
+return { ...prev, res: [...prev.res, "bill011"] };
+});
 }} style={{ background: T.green, border: "none", color: T.bg, padding: "8px 14px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>
 Add {fmt0(unallocated)}/mo to General Savings
 </button>
 </div>
+)}
+
+{section("Income", T.green, totalIncome, "income",
+incomes.map((inc, i) => (
+<div key={i} style={rowStyle}>
+<span style={rowName}>{inc.label || "Income"}</span>
+<span style={{ fontSize: "13px", color: T.text1, flexShrink: 0 }}>{fmt0((parseFloat(inc.netPay) || 0) * (FREQ[inc.frequency] || 1))}/mo</span>
+</div>
+))
+)}
+
+{rk.bills.length > 0 && section("Fixed bills", T.blue, billsTotal, "bills",
+rk.bills.map(i => {
+const b = bills[i];
+if (!b) return null;
+return (
+<div key={i} style={rowStyle}>
+<span style={rowName}>{b.name}</span>
+<div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+<input type="number" placeholder="0" value={b.amt} onChange={e => setBills(p => p.map((x, j) => j === i ? { ...x, amt: e.target.value } : x))} style={rowInp} />
+{perMo}
+</div>
+</div>
+);
+})
+)}
+
+{rk.disc.length > 0 && section("Discretionary", "#FFB347", discTotal, "discretionary",
+rk.disc.map(id => {
+const b = disc.find(x => x.id === id);
+if (!b) return null;
+return (
+<div key={id} style={rowStyle}>
+<span style={rowName}>{b.label}</span>
+<div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+<input type="number" placeholder="0" value={b.amount} onChange={e => setDisc(p => p.map(x => x.id === id ? { ...x, amount: e.target.value } : x))} style={rowInp} />
+{perMo}
+</div>
+</div>
+);
+})
+)}
+
+{rk.res.length > 0 && section("Savings & reserves", T.green, resTotal, "reserves",
+rk.res.map(id => {
+const b = reserves.find(x => x.id === id);
+if (!b) return null;
+return (
+<div key={id} style={rowStyle}>
+<span style={rowName}>{b.label}</span>
+<div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+<input type="number" placeholder="0" value={b.amount} onChange={e => setReserves(p => p.map(x => x.id === id ? { ...x, amount: e.target.value } : x))} style={rowInp} />
+{perMo}
+</div>
+</div>
+);
+})
 )}
 </WizardShell>
 );
@@ -2145,7 +2249,7 @@ return (
 
 <div style={cs.page}>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet" />
-<style>{`.budget-tabs::-webkit-scrollbar { display: none; } .material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; font-size: 24px; display: inline-block; line-height: 1; text-transform: none; letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr; }`}</style>
+<style>{`.budget-tabs::-webkit-scrollbar { display: none; } .material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; font-size: 24px; display: inline-block; line-height: 1; text-transform: none; letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr; } input[type="date"] { text-align: left; } input[type="date"]::-webkit-date-and-time-value { text-align: left; }`}</style>
 <div style={cs.header}>
 <div>
 <div style={{ fontSize: "12px", letterSpacing: "0.2em", color: T.text3, textTransform: "uppercase", marginBottom: "2px" }}>Paycheck Split Tracker</div>
