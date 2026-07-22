@@ -2,7 +2,7 @@
 
 A privacy-first paycheck-split budgeting app. Allocate income across fixed bills, discretionary spending, reserves, and debt payoff—all in your browser, all your data stays on your device.
 
-**[Live app →](https://www.megvais.com/budget-control/)** | [Quick start](#quick-start) | [Privacy](#privacy)
+**[Live app →](https://www.megvais.com/budget-controller/)** | [Quick start](#quick-start) | [Privacy](#privacy)
 
 ## Why it exists
 
