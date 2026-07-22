@@ -645,8 +645,9 @@ useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [st
 return (
 <div style={{ minHeight: "100vh", background: T.bg, color: T.text1, fontFamily: "DM Mono, monospace", display: "flex", flexDirection: "column" }}>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&family=DM+Mono:wght@400;500&display=block" rel="stylesheet" />
-<style>{`.material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; display: inline-block; line-height: 1; text-transform: none; letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr; } input[type="date"] { text-align: left; } input[type="date"]::-webkit-date-and-time-value { text-align: left; }`}</style>
+<style>{`.material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; display: inline-block; line-height: 1; text-transform: none; letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr; } input[type="date"] { text-align: left; } input[type="date"]::-webkit-date-and-time-value { text-align: left; } .wiz-grid { display: grid; grid-template-columns: 1fr; column-gap: 10px; align-items: start; } @media (min-width: 720px) { .wiz-grid { grid-template-columns: 1fr 1fr; } }`}</style>
 <div style={{ borderBottom: "1px solid " + T.bord, padding: "16px 24px 0" }}>
+<div style={{ maxWidth: "900px", margin: "0 auto" }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.2em", color: T.text3, textTransform: "uppercase" }}>Budget Setup</div>
 <div style={{ fontSize: "12px", color: T.text3 }}>Step {stepIdx + 1} of {totalSteps}</div>
@@ -657,9 +658,10 @@ return (
 ))}
 </div>
 </div>
+</div>
 {totalIncome > 0 && stepIdx >= 2 && (
 <div style={{ padding: "10px 24px", borderBottom: "1px solid " + T.bord, background: T.bg }}>
-<div style={{ background: T.surf, border: "1px solid " + (over ? T.red + "55" : T.bord), borderRadius: "8px", padding: "10px 14px" }}>
+<div style={{ background: T.surf, border: "1px solid " + (over ? T.red + "55" : T.bord), borderRadius: "8px", padding: "10px 14px", maxWidth: "900px", margin: "0 auto" }}>
 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
 <span style={{ fontSize: "12px", color: T.text3, letterSpacing: "0.1em", textTransform: "uppercase" }}>Allocated</span>
 <span style={{ fontSize: "12px", fontWeight: "700", color: over ? T.red : T.text1 }}>
@@ -705,12 +707,15 @@ return (
 </div>
 </div>
 )}
-<div ref={scrollRef} style={{ flex: 1, padding: "24px 24px 100px", maxWidth: "600px", overflowY: "auto" }}>
+<div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
+<div style={{ maxWidth: "900px", margin: "0 auto", padding: "24px 24px 100px", boxSizing: "border-box" }}>
 <div style={{ fontSize: "20px", fontWeight: "700", color: T.text1, marginBottom: "4px" }}>{title}</div>
 {subtitle && <div style={{ fontSize: "13px", color: T.text3, marginBottom: "24px", lineHeight: "1.6" }}>{subtitle}</div>}
 {children}
 </div>
-<div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.bg, borderTop: "1px solid " + T.bord, padding: "14px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+</div>
+<div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.bg, borderTop: "1px solid " + T.bord, padding: "14px 24px" }}>
+<div style={{ maxWidth: "900px", margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
 <button onClick={onBack} style={{ background: "transparent", border: "1px solid " + T.bord, color: T.text3, padding: "10px 20px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px" }}>
 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_back</span>Back
 </button>
@@ -718,6 +723,7 @@ return (
 {step === "review" ? "Launch Budget" : "Continue"}
 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_forward</span>
 </button>
+</div>
 </div>
 </div>
 );
@@ -1063,6 +1069,7 @@ return (
 {cats.map(cat => (
 <div key={cat} style={{ marginBottom: "20px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color: T.blue, marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid " + T.bord }}>{cat}</div>
+<div className="wiz-grid">
 {grouped[cat].map(({ b, i }) => {
 const dayVal = parseInt(b.day, 10);
 const dayErr = b.day !== "" && (isNaN(dayVal) || dayVal < 1 || dayVal > 28);
@@ -1088,6 +1095,7 @@ return (
 </div>
 );
 })}
+</div>
 <button onClick={() => setBills(p => [...p, { ...BLANK_BILL(), category: cat }])} style={{ background: "transparent", border: "1px dashed " + T.bord, color: T.muted, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", width: "100%", fontFamily: "DM Mono, monospace", marginTop: "2px", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
 <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>Add {cat.toLowerCase()} bill
 </button>
@@ -1107,6 +1115,7 @@ return (
 if (step === "discretionary") {
 return (
 <WizardShell {...shellProps} title="Discretionary spending" subtitle="Unlike fixed bills, these are flexible - you set a monthly target, but what you actually spend will vary." canNext={true} onNext={next}>
+<div className="wiz-grid">
 {disc.map((b, i) => (
 <div key={b.id} style={{ background: T.surf, border: `1px solid ${b.color}44`, borderRadius: "8px", padding: "14px 16px", marginBottom: "10px" }}>
 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
@@ -1120,6 +1129,7 @@ return (
 </div>
 </div>
 ))}
+</div>
 </WizardShell>
 );
 }
@@ -1128,6 +1138,7 @@ return (
 if (step === "reserves") {
 return (
 <WizardShell {...shellProps} title="Savings & reserves" subtitle="Unlike fixed bills or discretionary spending, reserves accumulate month to month - you're setting aside a little each month so the money is there when you need it. Think vet visits, auto repairs, or a vacation." canNext={true} onNext={next}>
+<div className="wiz-grid">
 {reserves.map((b, i) => (
 <div key={b.id} style={{ background: T.surf, border: `1px solid ${b.color}44`, borderRadius: "8px", padding: "14px 16px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "14px" }}>
 <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: b.color, flexShrink: 0 }} />
@@ -1140,6 +1151,7 @@ return (
 </div>
 </div>
 ))}
+</div>
 </WizardShell>
 );
 }
@@ -1201,6 +1213,7 @@ return (
     {filledBills.length > 0 && (
       <div style={{ marginBottom: "20px" }}>
         <div style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color: T.blue, marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid " + T.bord }}>From your fixed bills</div>
+        <div className="wiz-grid">
         {filledBills.map(b => {
           const isLinked = linkedIds.has(b.name);
           const debt = debts.find(d => d.linkedBucketId === b.name);
@@ -1219,12 +1232,14 @@ return (
             </div>
           );
         })}
+        </div>
       </div>
     )}
 
     {filledDisc.length > 0 && (
       <div style={{ marginBottom: "20px" }}>
         <div style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color: "#FFB347", marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid " + T.bord }}>From your discretionary spending</div>
+        <div className="wiz-grid">
         {filledDisc.map(b => {
           const isLinked = linkedIds.has(b.id);
           const debt = debts.find(d => d.linkedBucketId === b.id);
@@ -1243,12 +1258,14 @@ return (
             </div>
           );
         })}
+        </div>
       </div>
     )}
 
     {manualDebts.length > 0 && (
       <div style={{ marginBottom: "12px" }}>
         <div style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color: T.text3, marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid " + T.bord }}>Add more debts</div>
+        <div className="wiz-grid">
         {manualDebts.map((d, i) => (
           <div key={d.id} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 14px", marginBottom: "8px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
@@ -1271,6 +1288,7 @@ return (
             {renderDebtDetail(d, p => updManual(d.id, p))}
           </div>
         ))}
+        </div>
       </div>
     )}
 
@@ -1364,6 +1382,7 @@ Add {fmt0(unallocated)}/mo to General Savings
 </div>
 )}
 
+<div className="wiz-grid">
 {section("Income", T.green, totalIncome, "income",
 incomes.map((inc, i) => (
 <div key={i} style={rowStyle}>
@@ -1420,6 +1439,7 @@ return (
 );
 })
 )}
+</div>
 </WizardShell>
 );
 }
