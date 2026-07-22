@@ -36,7 +36,7 @@ checks = [
     ('totalIncome rounded',          'Math.round(incomes.reduce' in code),
     # -- Wizard --
     ('Wizard pre-pop',               'initialConfig' in code),
-    ('setupYear in wizard',          'setupYear:  existingCfg.setupYear' in code),
+    ('setupYear in wizard',          'existingCfg.setupYear' in code),
     ('setupYear in BT',              'cfg?.setupYear' in code),
     ('WizardShell at module level',  code.index('function WizardShell') < code.index('function OnboardingWizard')),
     ('cfgVersion remounts BT',       'key={cfgVersion}' in code and 'setCfgVersion' in code),
@@ -71,7 +71,7 @@ checks = [
     ('CSV section META',             '"## META"' in code),
     ('CSV blob download',            'new Blob([csv]' in code),
     ('CSV escapes commas',           'indexOf(",")' in code),
-    ('CSV import validates',         'REPLACE all your current data' in code),
+    ('CSV import shows summary card', 'ImportSummaryCard' in code),
     ('CSV import parses sections',   'curSection' in code),
     ('CSV linked debt fields',       '"Linked Bucket"' in code and '"Linked Type"' in code),
     # -- v8: Welcome screen --

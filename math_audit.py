@@ -318,15 +318,15 @@ check("CSV import parses sections",
 check("CSV import validates required sections",
       'missing' in code and '"INCOME"' in code and '"META"' in code,
       "Import should validate INCOME and META sections exist")
-check("CSV import confirms before overwrite",
-      "REPLACE all your current data" in code,
-      "Import should confirm with user before overwriting")
+check("CSV import previews before applying",
+      "ImportSummaryCard" in code and "setImportPreview" in code,
+      "Import should show the CSV Loaded card and defer applying until wizard Launch")
 check("CSV import saves all three stores",
       "saveConfig(newCfg)" in code and "saveData(newData)" in code and "saveDebts(newDebts)" in code,
       "Import must write to all three localStorage keys")
-check("CSV import updates React state",
-      "setCfg(newCfg)" in code and "setData(newData)" in code and "setDebts(newDebts)" in code,
-      "Import must update React state to reflect new data")
+check("CSV import stages payload for wizard",
+      "onImportCsv" in code and "setImportPreview" in code,
+      "Settings import must hand the parsed payload to the pre-filled wizard, not overwrite directly")
 check("CSV import rounds billsAmt",
       "Math.round(billItems.filter" in code,
       "Imported billsAmt should be rounded to cents")
@@ -334,8 +334,8 @@ check("CSV import handles quoted fields",
       "parseRow" in code and 'inQ' in code,
       "Import CSV parser must handle quoted fields with commas")
 check("Wizard pre-populates debts on re-run",
-      "loadDebts()" in code and "if (initialConfig)" in code and "saved.map(function" in code,
-      "Wizard debt state should load from localStorage when initialConfig is present")
+      "loadDebts()" in code and "if (initialDebts || initialConfig)" in code and "saved.map(function" in code,
+      "Wizard debt state should load from initialDebts or localStorage when re-run/importing")
 check("CSV export includes linked debt fields",
       '"Linked Bucket"' in code and '"Linked Type"' in code,
       "Export must include linkedBucketId and linkedType columns")

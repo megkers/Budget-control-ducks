@@ -362,15 +362,22 @@ bill013: (color) => <span className="material-symbols-outlined" style={{ fontSiz
 export default function Root() {
 const [ready, setReady] = useState(() => !!loadConfig());
 const [rerunConfig, setRerunConfig] = useState(null);
+// For a Settings CSV import: parsed debts + spend data are held in memory and
+// only committed at wizard Launch, so an existing budget isn't touched on cancel.
+const [rerunDebts, setRerunDebts] = useState(null);
+const [pendingData, setPendingData] = useState(null);
 // Increment on every wizard completion so BudgetTracker remounts and re-reads cfg
 const [cfgVersion, setCfgVersion] = useState(0);
+
+const clearRerun = () => { setRerunConfig(null); setRerunDebts(null); setPendingData(null); };
 
 if (!ready || rerunConfig !== null) {
 return <SetupGate
 key={ready ? "rerun" : "fresh"}
 initialConfig={rerunConfig}
-onDone={() => { setRerunConfig(null); setReady(true); setCfgVersion(v => v + 1); }}
-onBack={ready ? () => setRerunConfig(null) : null}
+initialDebts={rerunDebts}
+onDone={() => { if (pendingData) saveData(pendingData); clearRerun(); setReady(true); setCfgVersion(v => v + 1); }}
+onBack={ready ? clearRerun : null}
 />;
 }
 return <BudgetTracker
@@ -380,20 +387,51 @@ onReset={() => {
 setReady(false);
 }}
 onRerunWizard={() => setRerunConfig(loadConfig())}
+onImportCsv={({ config, debts, data }) => { setRerunDebts(debts || null); setPendingData(data || null); setRerunConfig(config); }}
 />;
+}
+
+// ------------
+// ImportSummaryCard - "CSV Loaded" confirmation shown after a CSV import,
+// before the pre-filled wizard opens. Used by both the welcome-screen import
+// and the Settings import. counts = { income, bills, disc, reserves, debts }.
+// ------------
+function ImportSummaryCard({ T, counts, onClose }) {
+return (
+<div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "DM Mono, monospace" }}>
+<div onClick={e => e.stopPropagation()} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "16px", padding: "8px 24px", width: "100%", maxWidth: "340px", display: "flex", flexDirection: "column", gap: "8px" }}>
+<div style={{ height: "40px", display: "flex", alignItems: "center", borderBottom: "1px solid " + T.bord }}>
+<div style={{ flex: 1, fontSize: "13px", fontWeight: "600", color: T.text1 }}>CSV Loaded</div>
+</div>
+<div style={{ fontSize: "12px", color: T.text1, lineHeight: "1.5" }}>
+<div>Income Sources: {counts.income}</div>
+<div>Fixed Bills: {counts.bills}</div>
+<div>Discretionary Buckets: {counts.disc}</div>
+<div>Reserves: {counts.reserves}</div>
+<div>Debts: {counts.debts}</div>
+</div>
+<div style={{ fontSize: "12px", color: T.text1, lineHeight: "1.5" }}>The wizard will open with your data pre-filled. Review each step and hit Launch when ready.</div>
+<div style={{ borderTop: "1px solid " + T.bord, display: "flex", justifyContent: "flex-end" }}>
+<button onClick={onClose} style={{ height: "40px", padding: "10px", background: "transparent", border: "none", color: T.blue, fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Close</button>
+</div>
+</div>
+</div>
+);
 }
 
 // ------------
 // SetupGate - welcome screen
 // ------------
-function SetupGate({ onDone, onBack, initialConfig }) {
+function SetupGate({ onDone, onBack, initialConfig, initialDebts }) {
 const [mode, setMode] = useState(initialConfig ? "wizard" : null);
 const [csvConfig, setCsvConfig] = useState(null);
-if (mode === "wizard") return <OnboardingWizard key={Date.now()} initialConfig={csvConfig || initialConfig} onDone={onDone} onBack={() => { if (onBack) onBack(); else { setCsvConfig(null); setMode(null); } }} />;
+const [csvSummary, setCsvSummary] = useState(null);
+if (mode === "wizard") return <OnboardingWizard key={Date.now()} initialConfig={csvConfig || initialConfig} initialDebts={initialDebts} onDone={onDone} onBack={() => { if (onBack) onBack(); else { setCsvConfig(null); setMode(null); } }} />;
 return (
 <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "DM Mono, monospace" }}>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&family=DM+Mono:wght@400;500&display=block" rel="stylesheet" />
 <style>{`.material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; display: inline-block; line-height: 1; text-transform: none; letter-spacing: normal; word-wrap: normal; white-space: nowrap; direction: ltr; }`}</style>
+{csvSummary && <ImportSummaryCard T={T} counts={csvSummary} onClose={() => { setCsvSummary(null); setMode("wizard"); }} />}
 <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "40px 32px", maxWidth: "420px", width: "100%", textAlign: "center" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.2em", color: T.text3, textTransform: "uppercase", marginBottom: "8px" }}>Paycheck Split Tracker</div>
 <div style={{ fontSize: "26px", fontWeight: "700", color: T.text1, marginBottom: "12px" }}>Budget Control</div>
@@ -561,14 +599,10 @@ Import from CSV
       });
       if (hasSpend) saveData(newData);
 
-      // Summary
-      var count = incArr.length + " income, " + billItems.length + " bills, "
-        + discBkts.length + " disc, " + resBkts.length + " reserves, " + newDebts.length + " debts";
-      window.alert("CSV loaded: " + count + ".\n\nThe wizard will open with your data pre-filled. Review each step and hit Launch when ready.");
-
-      // Launch wizard with imported config
+      // Stage the imported config and show the CSV Loaded summary card. The
+      // wizard opens (pre-filled) when the user closes the card.
       setCsvConfig(importedCfg);
-      setMode("wizard");
+      setCsvSummary({ income: incArr.length, bills: billItems.length, disc: discBkts.length, reserves: resBkts.length, debts: newDebts.length });
 
     } catch (err) {
       window.alert("Failed to read CSV: " + err.message);
@@ -779,7 +813,7 @@ return (
 // ------------
 // OnboardingWizard
 // ------------
-function OnboardingWizard({ onDone, onBack, initialConfig }) {
+function OnboardingWizard({ onDone, onBack, initialConfig, initialDebts }) {
 const STEPS = ["income", "howbudgets", "bills", "discretionary", "reserves", "debt", "review"];
 const [step, setStep] = useState("income");
 const stepIdx = STEPS.indexOf(step);
@@ -876,9 +910,11 @@ return RESERVE_DEFAULTS;
 const DEBT_TYPES = ["medical", "auto", "mortgage", "student", "credit card", "other"];
 const newDebt = () => ({ id: "d-" + Date.now(), name: "", type: "other", balance: "", apr: "", balanceAsOf: new Date().toISOString().slice(0, 10), linkedBucketId: null, linkedType: "manual", monthly: 0, monthlyPrincipal: 0, note: "" });
 const [debts, setDebts] = useState(() => {
-if (initialConfig) {
-  // Re-run or CSV import: load saved debts so they appear pre-filled
-  var saved = loadDebts() || [];
+if (initialDebts || initialConfig) {
+  // Re-run or CSV import: pre-fill debts. initialDebts (passed in-memory for a
+  // Settings import) takes precedence so nothing is written until Launch;
+  // otherwise fall back to saved debts in localStorage.
+  var saved = initialDebts || loadDebts() || [];
   if (saved.length > 0) {
     return saved.map(function(d) {
       return {
@@ -932,9 +968,10 @@ items: filledBills.map(b => ({ ...b, amt: parseFloat(b.amt) || 0, day: Math.min(
 ...reserves.filter(b => parseFloat(b.amount) > 0).map(b => ({ id: b.id, label: b.label, amount: parseFloat(b.amount), color: b.color, items: [{ name: b.label, amt: parseFloat(b.amount) }] })),
 ],
 primaryPayday: parseInt((incomes[0] && incomes[0].payday), 10) || 1,
-// setupYear/setupMonth mark the first month of data -- preserved on re-run
-setupYear:  existingCfg.setupYear  || now0.getFullYear(),
-setupMonth: existingCfg.setupMonth || now0.getMonth(),
+// setupYear/setupMonth mark the first month of data. Prefer an imported
+// value, then the prior save, so a re-run or CSV import keeps the start date.
+setupYear:  (initialConfig?.setupYear  ?? existingCfg.setupYear)  ?? now0.getFullYear(),
+setupMonth: (initialConfig?.setupMonth ?? existingCfg.setupMonth) ?? now0.getMonth(),
 };
 saveConfig(cfg);
 // Save wizard-entered debts to localStorage so BudgetTracker picks them up
@@ -1501,7 +1538,7 @@ return (
 return null;
 }
 
-function BudgetTracker({ onReset, onRerunWizard }) {
+function BudgetTracker({ onReset, onRerunWizard, onImportCsv }) {
 // ---- Theme ----
 const [themePref, setThemePref] = useState(function() { return loadTheme(); });
 const resolvedMode = resolveTheme(themePref);
@@ -1586,6 +1623,9 @@ const [moneyFlowTooltip, setMoneyFlowTooltip] = useState(null);
 const [flowLinkHover, setFlowLinkHover] = useState(null);
 // editModal: null | "bills" | "disc" | "reserves" | "debt" | "income"
 const [editModal, setEditModal] = useState(null);
+// Parsed-but-not-yet-applied CSV import: { counts, payload }. Shows the CSV
+// Loaded card; on close the pre-filled wizard opens (nothing saved until Launch).
+const [importPreview, setImportPreview] = useState(null);
 // Local edit state - populated when a modal opens
 const [editBills, setEditBills] = useState([]);
 const [editDisc, setEditDisc] = useState([]);
@@ -3869,26 +3909,12 @@ return (
                 });
               });
 
-              // -- Summary for confirmation --
-              var summary = "Import summary:\n"
-                + "- " + incomes.length + " income stream(s)\n"
-                + "- " + billItems.length + " fixed bill(s)\n"
-                + "- " + discBuckets.length + " discretionary bucket(s)\n"
-                + "- " + resBuckets.length + " reserve(s)\n"
-                + "- " + newDebts.length + " debt(s)\n"
-                + "- Setup: " + MONTHS[parsedSetupMonth] + " " + parsedSetupYear + "\n\n"
-                + "This will REPLACE all your current data. Continue?";
-
-              if (!window.confirm(summary)) return;
-
-              // -- Save to localStorage and update state --
-              saveConfig(newCfg);
-              saveData(newData);
-              saveDebts(newDebts);
-              setCfg(newCfg);
-              setData(newData);
-              setDebts(newDebts);
-              setTab("overview");
+              // Show the CSV Loaded card. Nothing is written yet -- on close the
+              // pre-filled wizard opens and the data is applied only at Launch.
+              setImportPreview({
+                counts: { income: incomes.length, bills: billItems.length, disc: discBuckets.length, reserves: resBuckets.length, debts: newDebts.length },
+                payload: { config: newCfg, debts: newDebts, data: newData },
+              });
 
             } catch (err) {
               window.alert("Failed to import CSV: " + err.message);
@@ -4107,6 +4133,7 @@ return (
 {editModal === "reserves"  && renderEditReserves()}
 {editModal === "debt"      && renderEditDebtModal()}
 {editModal === "income"    && renderEditIncome()}
+{importPreview && <ImportSummaryCard T={T} counts={importPreview.counts} onClose={() => { const p = importPreview.payload; setImportPreview(null); onImportCsv(p); }} />}
   </div>
 </div>
   );
