@@ -41,7 +41,7 @@ try { localStorage.setItem("budgetDebts", JSON.stringify(d)); } catch(e) {}
 // ------------
 // Schema versioning + migrations
 // ------------
-var SCHEMA_VERSION = 2;
+var SCHEMA_VERSION = 3;
 
 var ID_RENAMES = {
   factor: "bill001", groceries: "bill002", dining: "bill003",
@@ -105,7 +105,40 @@ function runMigrations(cfg) {
       }
     } catch(e2) {}
   }
-  return { ...result, version: SCHEMA_VERSION };
+  if (v < 3) {
+    // v2->v3: give fixed bill items stable ids and relink debts that pointed at
+    // a bill by name so a later rename can't break the connection.
+    var nameToId3 = {};
+    result = {
+      ...result,
+      buckets: (result.buckets || []).map(function(b) {
+        if (b.id !== "bills" || !b.items) return b;
+        return { ...b, items: b.items.map(function(it) {
+          var id = it.id || newBillId();
+          nameToId3[it.name] = id;
+          return { ...it, id: id };
+        }) };
+      }),
+    };
+    try {
+      var rawD3 = localStorage.getItem("budgetDebts");
+      if (rawD3) {
+        var debts3 = JSON.parse(rawD3);
+        var remapped3 = debts3.map(function(d) {
+          return (d.linkedType === "fixed" && d.linkedBucketId && nameToId3[d.linkedBucketId])
+            ? { ...d, linkedBucketId: nameToId3[d.linkedBucketId] }
+            : d;
+        });
+        localStorage.setItem("budgetDebts", JSON.stringify(remapped3));
+      }
+    } catch(e3) {}
+  }
+  // Persist the migrated config so migrations run exactly once. Without this,
+  // loadConfig re-runs them every load; the v3 step assigns random bill ids, so
+  // a second run would re-id the bills and orphan the just-relinked debts.
+  var out = { ...result, version: SCHEMA_VERSION };
+  try { localStorage.setItem("budgetConfig", JSON.stringify(out)); } catch(e) {}
+  return out;
 }
 
 // ------------
@@ -182,7 +215,20 @@ const BILL_TEMPLATE = [
 { name: "Storage unit",             amt: "", day: "", note: "",   category: "Other" },
 { name: "Other recurring bill",     amt: "", day: "", note: "",   category: "Other" },
 ];
-const BLANK_BILL = () => ({ name: "", amt: "", day: "", note: "", category: "Other" });
+const newBillId = () => "fb-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const BLANK_BILL = () => ({ id: newBillId(), name: "", amt: "", day: "", note: "", category: "Other" });
+// Debts link to fixed bills by the bill item's stable id. Older CSV exports
+// stored the link by bill name; remap those name-based links to ids on import.
+function resolveFixedDebtLinks(billItems, debts) {
+  const byId = new Set(billItems.map(b => b.id).filter(Boolean));
+  const nameToId = {};
+  billItems.forEach(b => { if (b.id) nameToId[b.name] = b.id; });
+  return debts.map(d => (
+    (d.linkedType === "fixed" && d.linkedBucketId && !byId.has(d.linkedBucketId) && nameToId[d.linkedBucketId])
+      ? { ...d, linkedBucketId: nameToId[d.linkedBucketId] }
+      : d
+  ));
+}
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -415,7 +461,7 @@ Import from CSV
 
       // -- Parse FIXED BILLS --
       var billItems = dataRows("FIXED BILLS").map(function(r) {
-        return { name: (r[0] || "").trim(), amt: num(r[1]), day: Math.min(28, Math.max(1, parseInt(r[2], 10) || 1)), category: (r[3] || "Other").trim(), note: (r[4] || "").trim() };
+        return { name: (r[0] || "").trim(), amt: num(r[1]), day: Math.min(28, Math.max(1, parseInt(r[2], 10) || 1)), category: (r[3] || "Other").trim(), note: (r[4] || "").trim(), id: (r[5] || "").trim() || newBillId() };
       }).filter(function(b) { return b.name && (b.amt > 0 || b.note === "cc"); });
       var billsAmt = Math.round(billItems.filter(function(b) { return b.note !== "cc"; }).reduce(function(s, b) { return s + b.amt; }, 0) * 100) / 100;
 
@@ -457,6 +503,7 @@ Import from CSV
           linkedBucketId: (r[10] || "").trim() || null, linkedType: (r[11] || "manual").trim(),
         };
       }).filter(function(d) { return d.name; });
+      newDebts = resolveFixedDebtLinks(billItems, newDebts);
       if (newDebts.length > 0) saveDebts(newDebts);
 
       // -- Parse spend data and save to localStorage (BudgetTracker reads on mount) --
@@ -550,16 +597,16 @@ Have a CSV from a previous export? Import it to skip manual entry.
     ],
     buckets: [
       { id: "bills", label: "Fixed Bills", amount: 2385, color: T.blue, items: [
-        { name: "Rent", amt: 1450, day: 1, note: "", category: "Housing" },
-        { name: "Car Payment", amt: 350, day: 5, note: "", category: "Transportation" },
-        { name: "Car Insurance", amt: 120, day: 5, note: "", category: "Transportation" },
-        { name: "Phone", amt: 65, day: 10, note: "", category: "Utilities" },
-        { name: "Internet", amt: 70, day: 12, note: "", category: "Utilities" },
-        { name: "Health Insurance", amt: 180, day: 15, note: "", category: "Health" },
-        { name: "Streaming", amt: 25, day: 18, note: "", category: "Subscriptions" },
-        { name: "Gym", amt: 50, day: 20, note: "", category: "Health" },
-        { name: "Credit Card", amt: 0, day: 22, note: "cc", category: "Financial" },
-        { name: "Donations", amt: 75, day: 25, note: "", category: "Giving" },
+        { id: "fb-demo-rent",   name: "Rent", amt: 1450, day: 1, note: "", category: "Housing" },
+        { id: "fb-demo-car",    name: "Car Payment", amt: 350, day: 5, note: "", category: "Transportation" },
+        { id: "fb-demo-carins", name: "Car Insurance", amt: 120, day: 5, note: "", category: "Transportation" },
+        { id: "fb-demo-phone",  name: "Phone", amt: 65, day: 10, note: "", category: "Utilities" },
+        { id: "fb-demo-net",    name: "Internet", amt: 70, day: 12, note: "", category: "Utilities" },
+        { id: "fb-demo-health", name: "Health Insurance", amt: 180, day: 15, note: "", category: "Health" },
+        { id: "fb-demo-stream", name: "Streaming", amt: 25, day: 18, note: "", category: "Subscriptions" },
+        { id: "fb-demo-gym",    name: "Gym", amt: 50, day: 20, note: "", category: "Health" },
+        { id: "fb-demo-cc",     name: "Credit Card", amt: 0, day: 22, note: "cc", category: "Financial" },
+        { id: "fb-demo-give",   name: "Donations", amt: 75, day: 25, note: "", category: "Giving" },
       ]},
       { id: "bill002", label: "Groceries", amount: 450, color: "#FFB347", items: [{ name: "Groceries", amt: 450 }] },
       { id: "bill003", label: "Dining Out", amount: 250, color: "#FCD34D", items: [{ name: "Dining out", amt: 250 }] },
@@ -607,7 +654,7 @@ Have a CSV from a previous export? Import it to skip manual entry.
   }
 
   var demoDebts = [
-    { id: "demo-1", name: "Car Loan", type: "auto", balance: 8450, apr: 4.5, monthly: 350, monthlyPrincipal: 350, escrow: 0, balanceAsOf: now.toISOString().slice(0, 10), grows: false, linkedBucketId: "Car Payment", linkedType: "fixed", note: "" },
+    { id: "demo-1", name: "Car Loan", type: "auto", balance: 8450, apr: 4.5, monthly: 350, monthlyPrincipal: 350, escrow: 0, balanceAsOf: now.toISOString().slice(0, 10), grows: false, linkedBucketId: "fb-demo-car", linkedType: "fixed", note: "" },
     { id: "demo-2", name: "Student Loan", type: "student", balance: 12200, apr: 5.25, monthly: 250, monthlyPrincipal: 250, escrow: 0, balanceAsOf: now.toISOString().slice(0, 10), grows: false, linkedBucketId: null, linkedType: "manual", note: "Federal direct loan" },
   ];
 
@@ -770,15 +817,22 @@ return [{ label: "Main Job", netPay: "", payday: "", frequency: "monthly" }];
 const [bills, setBills] = useState(() => {
 if ((initialConfig && initialConfig.buckets)) {
 const savedBills = initialConfig.buckets.find(b => b.id === "bills");
+const savedItems = (savedBills && savedBills.items) || [];
 // Start with full template, then fill in saved amounts/days where names match
-return BILL_TEMPLATE.map(t => {
-const saved = (savedBills && savedBills.items && savedBills.items.find(i => i.name === t.name));
+const merged = BILL_TEMPLATE.map(t => {
+const saved = savedItems.find(i => i.name === t.name);
 return saved
-? { ...t, amt: String(saved.amt || ""), day: String(saved.day || ""), note: saved.note || t.note }
-: { ...t };
+? { ...t, id: saved.id || newBillId(), amt: String(saved.amt || ""), day: String(saved.day || ""), note: saved.note || t.note }
+: { ...t, id: newBillId() };
 });
+// Append any saved bills not in the template (custom / imported names)
+savedItems.forEach(s => {
+if (s.name && !BILL_TEMPLATE.find(t => t.name === s.name))
+merged.push({ id: s.id || newBillId(), name: s.name, amt: String(s.amt || ""), day: String(s.day || ""), note: s.note || "", category: s.category || "Other" });
+});
+return merged;
 }
-return BILL_TEMPLATE.map(i => ({ ...i }));
+return BILL_TEMPLATE.map(i => ({ ...i, id: newBillId() }));
 });
 
 const DISC_IDS = ["bill002", "bill005", "bill003", "bill004", "bill001"];
@@ -1104,7 +1158,7 @@ return (
 <div style={{ display: "flex", justifyContent: "center", marginTop: "8px" }}>
 {bills.some(b => b.category)
 ? <button onClick={() => setBills([BLANK_BILL()])} style={{ background: "none", border: "none", color: T.muted, fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", textDecoration: "underline" }}>Clear all and start from scratch</button>
-: <button onClick={() => setBills(BILL_TEMPLATE.map(i => ({ ...i })))} style={{ background: "none", border: "none", color: T.blue, fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", textDecoration: "underline" }}>Restore template</button>
+: <button onClick={() => setBills(BILL_TEMPLATE.map(i => ({ ...i, id: newBillId() })))} style={{ background: "none", border: "none", color: T.blue, fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", textDecoration: "underline" }}>Restore template</button>
 }
 </div>
 </WizardShell>
@@ -1215,11 +1269,11 @@ return (
         <div style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color: T.blue, marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid " + T.bord }}>From your fixed bills</div>
         <div className="wiz-grid">
         {filledBills.map(b => {
-          const isLinked = linkedIds.has(b.name);
-          const debt = debts.find(d => d.linkedBucketId === b.name);
+          const isLinked = linkedIds.has(b.id);
+          const debt = debts.find(d => d.linkedBucketId === b.id);
           return (
-            <div key={b.name} style={{ background: T.surf, border: `1px solid ${isLinked ? "#4A9EFF55" : T.bord}`, borderRadius: "8px", padding: "12px 14px", marginBottom: "8px" }}>
-              <div onClick={() => toggle(b.name, b.name, b.amt, "fixed")} style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+            <div key={b.id} style={{ background: T.surf, border: `1px solid ${isLinked ? "#4A9EFF55" : T.bord}`, borderRadius: "8px", padding: "12px 14px", marginBottom: "8px" }}>
+              <div onClick={() => toggle(b.id, b.name, b.amt, "fixed")} style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
                 <div style={{ width: "18px", height: "18px", borderRadius: "4px", border: `2px solid ${isLinked ? T.blue : T.bord}`, background: isLinked ? T.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {isLinked && <span className="material-symbols-outlined" style={{ fontSize: "14px", color: T.bg }}>check</span>}
                 </div>
@@ -1228,7 +1282,7 @@ return (
                   <div style={{ fontSize: "12px", color: T.text3 }}>{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(b.amt)}/mo - fixed payment</div>
                 </div>
               </div>
-              {isLinked && debt && renderDebtDetail(debt, p => updLinked(b.name, p))}
+              {isLinked && debt && renderDebtDetail(debt, p => updLinked(b.id, p))}
             </div>
           );
         })}
@@ -1645,12 +1699,12 @@ const openEditModal = (panel) => {
     const saved = (billsBucket && billsBucket.items) ? billsBucket.items : [];
     const merged = BILL_TEMPLATE.map(t => {
       const s = saved.find(i => i.name === t.name);
-      return s ? { ...t, amt: String(s.amt || ""), day: String(s.day || ""), note: s.note || t.note } : { ...t };
+      return s ? { ...t, id: s.id || newBillId(), amt: String(s.amt || ""), day: String(s.day || ""), note: s.note || t.note } : { ...t, id: newBillId() };
     });
     // Append any saved bills not in template (user-added)
     saved.forEach(s => {
       if (!BILL_TEMPLATE.find(t => t.name === s.name))
-        merged.push({ name: s.name, amt: String(s.amt || ""), day: String(s.day || ""), note: s.note || "", category: s.category || "Other" });
+        merged.push({ id: s.id || newBillId(), name: s.name, amt: String(s.amt || ""), day: String(s.day || ""), note: s.note || "", category: s.category || "Other" });
     });
     setEditBills(merged);
   }
@@ -1709,7 +1763,7 @@ const saveEditModal = () => {
     const filled = editBills.filter(b => b.name.trim() && parseFloat(b.amt) > 0);
     const billsAmt = Math.round(filled.filter(b => b.note !== "cc").reduce((s, b) => s + (parseFloat(b.amt) || 0), 0) * 100) / 100;
     const newBills = { id: "bills", label: "Fixed Bills", amount: billsAmt, color: T.blue,
-      items: filled.map(b => ({ name: b.name, amt: parseFloat(b.amt) || 0, day: Math.min(28, Math.max(1, parseInt(b.day, 10) || 1)), note: b.note || "", category: b.category || "Other" })) };
+      items: filled.map(b => ({ id: b.id || newBillId(), name: b.name, amt: parseFloat(b.amt) || 0, day: Math.min(28, Math.max(1, parseInt(b.day, 10) || 1)), note: b.note || "", category: b.category || "Other" })) };
     const newCfg = { ...c, buckets: [newBills, ...prev.filter(b => b.id !== "bills")] };
     saveConfig(newCfg);
     setCfg(newCfg);
@@ -2385,11 +2439,11 @@ return (
       const fixedPaidCount = fixedBillItems.filter(i => i.day && i.day <= today.getDate()).length;
 
       const reservesTotal = RESERVE_IDS_LIST.reduce((s,id) => { const b = buckets.find(x => x.id === id); return s + (b ? b.amount : 0); }, 0);
-      const linkedBillNames = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
+      const linkedBillIds = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
       const linkedDiscIds = new Set(debts.filter(d => d.linkedType === "discretionary" && d.linkedBucketId).map(d => d.linkedBucketId));
-      const fixedFlowTotal = Math.round(fixedBillItems.filter(i => i.note !== "cc" && !linkedBillNames.has(i.name)).reduce((s, i) => s + i.amt, 0) * 100) / 100;
+      const fixedFlowTotal = Math.round(fixedBillItems.filter(i => i.note !== "cc" && !linkedBillIds.has(i.id)).reduce((s, i) => s + i.amt, 0) * 100) / 100;
       const discFlowTotal = discBuckets.filter(b => !linkedDiscIds.has(b.id)).reduce((s, b) => s + b.amount, 0);
-      const debtPaymentTotal = Math.round((fixedBillItems.filter(i => i.note !== "cc" && linkedBillNames.has(i.name)).reduce((s, i) => s + i.amt, 0) + discBuckets.filter(b => linkedDiscIds.has(b.id)).reduce((s, b) => s + b.amount, 0)) * 100) / 100;
+      const debtPaymentTotal = Math.round((fixedBillItems.filter(i => i.note !== "cc" && linkedBillIds.has(i.id)).reduce((s, i) => s + i.amt, 0) + discBuckets.filter(b => linkedDiscIds.has(b.id)).reduce((s, b) => s + b.amount, 0)) * 100) / 100;
       const leftover = Math.max(0, totalIncomeCfg - fixedFlowTotal - discFlowTotal - reservesTotal - debtPaymentTotal);
       const treeDenom = totalIncomeCfg > 0 ? totalIncomeCfg : 1;
 
@@ -2712,13 +2766,13 @@ return (
         <span style={{ fontSize: "12px", fontWeight: "600", color: T.text2, letterSpacing: "0.1em", textTransform: "uppercase" }}>Budget Details</span>
       </div>
       {showRef && (() => {
-        const linkedBillNames = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
+        const linkedBillIds = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
         const linkedDiscIds = new Set(debts.filter(d => d.linkedType === "discretionary" && d.linkedBucketId).map(d => d.linkedBucketId));
         const refBillItems = ((buckets.find(b => b.id === "bills") && buckets.find(b => b.id === "bills").items) || []).filter(i => i.amt > 0 && i.note !== "cc");
         const refDiscBuckets = buckets.filter(b => ["bill001","bill002","bill003","bill004","bill005"].includes(b.id) && b.amount > 0);
         const refGroups = [
           { group: "Fixed", color: T.blue, items:
-            refBillItems.filter(i => !linkedBillNames.has(i.name)).map(i => ({ label: i.name, amt: i.amt }))
+            refBillItems.filter(i => !linkedBillIds.has(i.id)).map(i => ({ label: i.name, amt: i.amt }))
           },
           { group: "Discretionary", color: "#FFB347", items:
             refDiscBuckets.filter(b => !linkedDiscIds.has(b.id)).map(b => ({ label: b.label, amt: b.amount }))
@@ -2727,7 +2781,7 @@ return (
             buckets.filter(b => ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"].includes(b.id) && b.amount > 0).map(b => ({ label: b.label, amt: b.amount }))
           },
           { group: "Debt Repayment", color: "#FF6B9D", items:
-            refBillItems.filter(i => linkedBillNames.has(i.name)).map(i => ({ label: i.name, amt: i.amt }))
+            refBillItems.filter(i => linkedBillIds.has(i.id)).map(i => ({ label: i.name, amt: i.amt }))
               .concat(refDiscBuckets.filter(b => linkedDiscIds.has(b.id)).map(b => ({ label: b.label, amt: b.amount })))
           },
         ].filter(group => group.items.length > 0);
@@ -3504,10 +3558,10 @@ return (
 
         // -- FIXED BILLS --
         lines.push("## FIXED BILLS");
-        row("Name", "Amount", "Due Day", "Category", "Note");
+        row("Name", "Amount", "Due Day", "Category", "Note", "ID");
         var billsBucket = c?.buckets?.find(function(b) { return b.id === "bills"; }) ?? null;
         ((billsBucket && billsBucket.items) || []).forEach(function(item) {
-          row(item.name, item.amt, item.day, item.category || "", item.note || "");
+          row(item.name, item.amt, item.day, item.category || "", item.note || "", item.id || "");
         });
         lines.push("");
 
@@ -3700,6 +3754,7 @@ return (
                   day: Math.min(28, Math.max(1, parseInt(r[2], 10) || 1)),
                   category: (r[3] || "Other").trim(),
                   note: (r[4] || "").trim(),
+                  id: (r[5] || "").trim() || newBillId(),
                 };
               }).filter(function(b) { return b.name && (b.amt > 0 || b.note === "cc"); });
               var billsAmt = Math.round(billItems.filter(function(b) { return b.note !== "cc"; }).reduce(function(s, b) { return s + b.amt; }, 0) * 100) / 100;
@@ -3751,6 +3806,7 @@ return (
                   linkedType: (r[11] || "manual").trim(),
                 };
               }).filter(function(d) { return d.name; });
+              newDebts = resolveFixedDebtLinks(billItems, newDebts);
 
               // -- Parse MONTHLY SPEND + RESERVE SPEND + TRANSACTIONS into data --
               // Start with blank data from setup date
@@ -3867,17 +3923,17 @@ return (
   (() => {
     // Self-contained so the modal does not depend on the Overview tab's locals.
     const bills = buckets.find(b => b.id === "bills");
-    const linkedBillNames = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
+    const linkedBillIds = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
     const linkedDiscIds = new Set(debts.filter(d => d.linkedType === "discretionary" && d.linkedBucketId).map(d => d.linkedBucketId));
     const allBillItems = ((bills && bills.items) || []).filter(i => i.amt > 0 && i.note !== "cc");
-    const fixedBillItems = allBillItems.filter(i => !linkedBillNames.has(i.name));
+    const fixedBillItems = allBillItems.filter(i => !linkedBillIds.has(i.id));
     const fixedCommitted = Math.round(fixedBillItems.reduce((s, i) => s + i.amt, 0) * 100) / 100;
     const discIds = ["bill001","bill002","bill003","bill004","bill005"];
     const RESERVE_IDS_LIST = ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"];
     const allDiscBuckets = buckets.filter(b => discIds.includes(b.id) && b.amount > 0);
     const discBudget = allDiscBuckets.filter(b => !linkedDiscIds.has(b.id)).reduce((s, b) => s + b.amount, 0);
     const reservesTotal = RESERVE_IDS_LIST.reduce((s, id) => { const b = buckets.find(x => x.id === id); return s + (b ? b.amount : 0); }, 0);
-    const debtItems = allBillItems.filter(i => linkedBillNames.has(i.name)).map(i => ({ label: i.name, value: i.amt, color: "#FF6B9D" }))
+    const debtItems = allBillItems.filter(i => linkedBillIds.has(i.id)).map(i => ({ label: i.name, value: i.amt, color: "#FF6B9D" }))
       .concat(allDiscBuckets.filter(b => linkedDiscIds.has(b.id)).map(b => ({ label: b.label, value: b.amount, color: "#FF6B9D" })));
     const debtPaymentTotal = Math.round(debtItems.reduce((s, i) => s + i.value, 0) * 100) / 100;
     const rawLeftover = Math.round((totalIncomeCfg - fixedCommitted - discBudget - reservesTotal - debtPaymentTotal) * 100) / 100;
