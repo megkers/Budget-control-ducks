@@ -1859,7 +1859,7 @@ const renderDebtInfoModal = () => {
                 const tx = Math.max(x0, Math.min(x1 - tw, xFor(hi) + 8));
                 return (
                   <g>
-                    <rect x={tx} y={y0 + 2} width={tw} height={th} rx="7" fill={T.bg} stroke={T.bord} strokeWidth="1" />
+                    <rect x={tx} y={y0 + 2} width={tw} height={th} rx="8" fill={T.bg} stroke={T.bord} strokeWidth="1" />
                     <text x={tx + 10} y={y0 + 17} fill={T.text3} fontSize="10">{monthLabel(hi)}</text>
                     <text x={tx + 10} y={y0 + 32} fill={PINK} fontSize="12" fontWeight="700">{fmt(Math.round(series[hi].paid))} paid</text>
                     <text x={tx + 10} y={y0 + 46} fill={T.text2} fontSize="11">{fmt(Math.round(series[hi].remaining))} left</text>
