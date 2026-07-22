@@ -92,7 +92,7 @@ checks = [
     # -- v8: Date inputs left-aligned --
     ('Date inputs left-aligned',     'textAlign: "left"' in code),
     # -- schema versioning --
-    ('SCHEMA_VERSION constant',      'SCHEMA_VERSION = 2' in code),
+    ('SCHEMA_VERSION constant',      'SCHEMA_VERSION = 3' in code),
     ('ID_RENAMES map',               'ID_RENAMES' in code and 'bill001' in code),
     ('runMigrations function',       'function runMigrations(' in code),
     ('loadConfig calls runMigrations', 'runMigrations(cfg)' in code),
