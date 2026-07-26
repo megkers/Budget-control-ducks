@@ -37,11 +37,73 @@ try { const r = localStorage.getItem("budgetDebts"); return r ? JSON.parse(r) : 
 function saveDebts(d) {
 try { localStorage.setItem("budgetDebts", JSON.stringify(d)); } catch(e) {}
 }
+// budgetTransactions: flat, top-level itemized ledger. spent[] stays the source
+// of truth for all budget math; this store is the per-transaction record that
+// import (CSV, screenshot) and manual Log Spend produce and the app displays.
+function loadTransactions() {
+try { const r = localStorage.getItem("budgetTransactions"); return r ? JSON.parse(r) : []; } catch(e) { return []; }
+}
+function saveTransactions(t) {
+try { localStorage.setItem("budgetTransactions", JSON.stringify(t)); } catch(e) {}
+}
+function newTxnId() {
+return "txn_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+}
+// Normalize any record (legacy per-month or new) into the canonical shape.
+function toTxnRecord(tx) {
+return {
+id: tx.id || newTxnId(),
+date: tx.date || "",
+amount: tx.amount,
+description: tx.description || tx.merchant || "",
+merchant: tx.merchant || "",
+source: tx.source || "manual",
+sourceRef: tx.sourceRef || null,
+bucketId: tx.bucketId || tx.reserveId || tx.category || null,
+status: tx.status || "confirmed",
+confidence: (tx.confidence === undefined ? null : tx.confidence),
+};
+}
+// Fold legacy per-month reserveTransactions into the flat store. Idempotent
+// (dedups by id), so it is safe to run on every mount and picks up records that
+// CSV import writes into budgetData without touching those import code paths.
+function foldLegacyTransactions() {
+var flat = loadTransactions();
+var seen = {};
+flat.forEach(function(t) { if (t && t.id != null) seen[t.id] = true; });
+var data = loadData() || {};
+var changed = false;
+Object.keys(data).forEach(function(k) {
+var arr = (data[k] && data[k].reserveTransactions) || [];
+arr.forEach(function(tx) {
+if (!tx || tx.id == null || seen[tx.id]) return;
+seen[tx.id] = true;
+flat.push(toTxnRecord(tx));
+changed = true;
+});
+});
+if (changed) saveTransactions(flat);
+return flat;
+}
+// "2026-07-12" -> { y: 2026, m: 6 } style checks used to place a txn in a month.
+function txnInMonth(tx, year, month) {
+if (!tx.date || tx.date.length < 7) return false;
+var y = parseInt(tx.date.slice(0, 4), 10);
+var m = parseInt(tx.date.slice(5, 7), 10) - 1;
+return y === year && m === month;
+}
+function monthLabelFromDate(dateStr) {
+if (!dateStr || dateStr.length < 7) return null;
+var y = parseInt(dateStr.slice(0, 4), 10);
+var m = parseInt(dateStr.slice(5, 7), 10) - 1;
+if (isNaN(y) || m < 0 || m > 11) return null;
+return MONTHS[m] + " " + y;
+}
 
 // ------------
 // Schema versioning + migrations
 // ------------
-var SCHEMA_VERSION = 3;
+var SCHEMA_VERSION = 4;
 
 var ID_RENAMES = {
   factor: "bill001", groceries: "bill002", dining: "bill003",
@@ -132,6 +194,11 @@ function runMigrations(cfg) {
         localStorage.setItem("budgetDebts", JSON.stringify(remapped3));
       }
     } catch(e3) {}
+  }
+  if (v < 4) {
+    // v3->v4: fold per-month reserveTransactions into the flat budgetTransactions
+    // store. Idempotent, so it is harmless if it also runs on a later mount.
+    try { foldLegacyTransactions(); } catch(e4) {}
   }
   // Persist the migrated config so migrations run exactly once. Without this,
   // loadConfig re-runs them every load; the v3 step assigns random bill ids, so
@@ -589,6 +656,7 @@ Import from CSV
           id: "tx-imp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
           date: (r[1] || "").trim(), merchant: (r[2] || "").trim(), amount: num(r[3]),
           reserveId: (r[4] || "").trim() || null, category: (r[5] || "").trim() || null,
+          source: "csv", status: "confirmed",
         });
       });
       // Check if any spend data was found
@@ -1604,6 +1672,9 @@ const [expanded, setExpanded] = useState(null);
 const [data, setData] = useState(() => loadData() || getDefaultData());
 const [inputs, setInputs] = useState({});
 const [debts, setDebts] = useState(() => loadDebts() || []);
+// Flat itemized ledger. foldLegacyTransactions() migrates any per-month records
+// (incl. ones a CSV import just wrote into budgetData) into it on mount.
+const [transactions, setTransactions] = useState(() => foldLegacyTransactions());
 const [showRef, setShowRef] = useState(false);
 const [txMerchant, setTxMerchant] = useState("");
 const [txAmount, setTxAmount] = useState("");
@@ -1636,6 +1707,7 @@ const [editIncomes, setEditIncomes] = useState([]);
 // Persist data and debts to localStorage whenever they change
 useEffect(() => { saveData(data); }, [data]);
 useEffect(() => { saveDebts(debts); }, [debts]);
+useEffect(() => { saveTransactions(transactions); }, [transactions]);
 
 const key = `${year}-${month}`;
 const cur = data[key] || { spent: {} };
@@ -1660,41 +1732,33 @@ function getReserveBal(id) {
   return Math.round(bal * 100) / 100;
 }
 
-function reassignTransaction(txId, newReserveId) {
-setData(d => {
-const monthData = d[key] || {};
-const txs = (monthData.reserveTransactions || []).map(tx =>
-tx.id === txId ? { ...tx, reserveId: newReserveId || null } : tx
-);
-return { ...d, [key]: { ...monthData, reserveTransactions: txs } };
-});
+function reassignTransaction(txId, newBucketId) {
+setTransactions(t => t.map(tx =>
+tx.id === txId ? { ...tx, bucketId: newBucketId || null } : tx
+));
 }
 
 function addTransaction() {
 const amount = parseFloat(txAmount);
 if (!txMerchant.trim() || isNaN(amount) || amount <= 0) return;
-const newTx = {
-id: "tx-" + Date.now(),
+const rec = toTxnRecord({
+id: newTxnId(),
 date: txDate,
 merchant: txMerchant.trim(),
 amount,
-reserveId: txCategory === "reserve" ? txReserve : null,
-category: txCategory === "discretionary" ? txReserve : null,
-};
-// Add to reserveTransactions
+bucketId: txReserve,
+source: "manual",
+status: "confirmed",
+});
+setTransactions(t => [...t, rec]);
+// spent[] stays the source of truth for all budget math; a confirmed manual
+// log adds to it directly. txReserve holds the chosen bucket id for both the
+// reserve and discretionary categories.
 setData(d => ({
 ...d,
 [key]: {
 ...d[key],
-reserveTransactions: [...(d[key]?.reserveTransactions ?? []), newTx],
-// If reserve, also update the reserve spend total
-...(txCategory === "reserve" ? {
-spent: { ...(d[key]?.spent || {}), [txReserve]: ((d[key]?.spent?.[txReserve] || 0) + amount) }
-} : {}),
-// If discretionary, update spent
-...(txCategory === "discretionary" ? {
-spent: { ...d[key]?.spent, [txReserve]: (d[key]?.spent?.[txReserve] ?? 0) + amount }
-} : {}),
+spent: { ...(d[key]?.spent || {}), [txReserve]: ((d[key]?.spent?.[txReserve] || 0) + amount) },
 }
 }));
 setTxMerchant("");
@@ -3228,7 +3292,7 @@ return (
       return (
     <div style={{ marginBottom: "20px" }}>
       {RESERVE_BUCKETS.map(r => {
-        const txs = (cur.reserveTransactions || []).filter(tx => tx.reserveId === r.id);
+        const txs = transactions.filter(tx => tx.bucketId === r.id && tx.status !== "ignored" && txnInMonth(tx, year, month));
         const txTotal = txs.reduce((s, t) => s + t.amount, 0);
         const isOpen = expandedReserve === r.id;
         return (
@@ -3262,7 +3326,7 @@ return (
                         <div style={{ fontSize: "12px", color: T.text2, marginTop: "2px" }}>{tx.date}</div>
                       </div>
                       <div style={{ fontSize: "13px", fontWeight: "700", color: r.color, marginRight: "8px" }}>-{fmt(tx.amount)}</div>
-                      <select value={tx.reserveId || ""} onChange={e => reassignTransaction(tx.id, e.target.value || null)}
+                      <select value={tx.bucketId || ""} onChange={e => reassignTransaction(tx.id, e.target.value || null)}
                         style={{ background: T.surf, border: `1px solid ${r.color}55`, color: T.text2, padding: "4px 8px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>
                         <option value="">Unassign</option>
                         {buckets.filter(b => ["bill006", "bill007", "bill008", "bill009", "bill011", "bill012"].includes(b.id)).map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
@@ -3675,19 +3739,11 @@ return (
         // -- RESERVE TRANSACTIONS --
         lines.push("## RESERVE TRANSACTIONS");
         row("Month", "Date", "Merchant", "Amount", "Reserve ID", "Discretionary ID");
-        for (var y3 = sYear; y3 <= now.getFullYear() + 1; y3++) {
-          for (var m3 = 0; m3 < 12; m3++) {
-            if (y3 === sYear && m3 < sMo) continue;
-            if (y3 > now.getFullYear() + 1) break;
-            var mk3 = y3 + "-" + m3;
-            var md3 = d[mk3];
-            if (!md3) continue;
-            var txs = md3.reserveTransactions || [];
-            txs.forEach(function(tx) {
-              row(MONTHS[m3] + " " + y3, tx.date || "", tx.merchant || "", tx.amount, tx.reserveId || "", tx.category || "");
-            });
-          }
-        }
+        loadTransactions().forEach(function(tx) {
+          var lbl = monthLabelFromDate(tx.date);
+          if (!lbl) return;
+          row(lbl, tx.date || "", tx.merchant || "", tx.amount, tx.bucketId || "", "");
+        });
 
         // -- Metadata footer --
         lines.push("");
@@ -3906,6 +3962,7 @@ return (
                   amount: num(r[3]),
                   reserveId: (r[4] || "").trim() || null,
                   category: (r[5] || "").trim() || null,
+                  source: "csv", status: "confirmed",
                 });
               });
 
