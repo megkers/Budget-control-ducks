@@ -247,15 +247,16 @@ if paidytd_idx > 0:
 # ========================================================
 print("\n=== Transaction Logging ===")
 
-# Reserve spend: addTransaction adds to both reserveTransactions AND spent[id]
-check("addTransaction updates spent[id] for reserves",
-      "txCategory === \"reserve\"" in code and "[txReserve]" in code,
-      "Must update spent[id] when logging reserve transactions")
+# addTransaction records a flat budgetTransactions entry AND updates spent[id].
+# txReserve holds the selected bucket id for both reserve and discretionary, so
+# a single spent[txReserve] update covers both categories.
+check("addTransaction records flat transaction",
+      "setTransactions(" in code and "toTxnRecord(" in code,
+      "Must append a record to the flat budgetTransactions store")
 
-# Discretionary spend: addTransaction updates spent[id]
-check("addTransaction updates spent for discretionary",
-      "txCategory === \"discretionary\"" in code,
-      "Must branch on txCategory to update discretionary spent")
+check("addTransaction updates spent[txReserve]",
+      "[txReserve]: ((d[key]?.spent?.[txReserve] || 0) + amount)" in code,
+      "Must add the logged amount to spent[txReserve] (covers reserve + discretionary)")
 
 check("individual log fns removed",        "function logTravel" not in code,  "logTravel should be replaced by logReserveSpend")
 
