@@ -1618,7 +1618,7 @@ const cs = {
   header: { borderBottom: "1px solid " + T.bord, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" },
   sel: { background: T.surf, border: "1px solid " + T.bord, color: T.text1, padding: "7px 10px", borderRadius: "4px", fontSize: "12px", cursor: "pointer" },
   tabs: { display: "flex", borderBottom: "1px solid " + T.bord, padding: "0 24px", overflowX: "auto", overflowY: "hidden", minHeight: "42px", scrollbarWidth: "none", msOverflowStyle: "none" },
-  body: { padding: "20px 24px", maxWidth: "1440px", margin: "0" },
+  body: { padding: "20px 24px", margin: "0" },
   lbl: { fontSize: "12px", letterSpacing: "0.12em", color: T.text2, textTransform: "uppercase", marginBottom: "4px" },
   inp: { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "13px", boxSizing: "border-box" },
 };
@@ -2554,12 +2554,12 @@ return (
       const kpiLbl = { fontSize: "12px", color: T.text3, letterSpacing: "0.12em", textTransform: "uppercase" };
       const kpiAmt = { fontSize: "21px", fontWeight: "700", lineHeight: 1 };
       const kpiSub = { fontSize: "12px", color: T.text1, marginTop: "4px" };
-      const kpiCard = { flex: "1 0 0", maxWidth: "400px", marginBottom: 0, padding: "12px 14px", boxSizing: "border-box" };
+      const kpiCard = { flex: "1 0 0", marginBottom: 0, padding: "12px 14px", boxSizing: "border-box" };
 
       const isB = OVERVIEW_LAYOUT === "B";
 
       const incomeCard = (
-        <Card style={{ ...kpiCard, minWidth: "340px", cursor: "pointer", display: "flex", flexDirection: isB ? "column" : "row", alignItems: isB ? "stretch" : "flex-start", gap: "12px", padding: "12px", ...(isB ? { maxWidth: "none", minHeight: "115px" } : {}) }} onClick={() => setShowFlowInfo(true)}>
+        <Card style={{ ...kpiCard, minWidth: "340px", cursor: "pointer", display: "flex", flexDirection: isB ? "column" : "row", alignItems: isB ? "stretch" : "flex-start", gap: "12px", padding: "12px", ...(isB ? { minHeight: "115px" } : {}) }} onClick={() => setShowFlowInfo(true)}>
           <div style={{ flexShrink: 0, minWidth: "90px" }}>
             <div style={kpiLbl}>Monthly Income</div>
           </div>
@@ -2685,7 +2685,7 @@ return (
 
       // Compact discretionary card (uses the sizing formerly on Debt Paid) - sits in the first row.
       const discCard = (
-        <Card border={over ? T.red : T.bord} style={{ ...kpiCard, minWidth: "280px", maxWidth: "none" }}>
+        <Card border={over ? T.red : T.bord} style={{ ...kpiCard, minWidth: "280px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
             <div style={kpiLbl}>Discretionary Budget Used</div>
             <span style={{ fontSize: "12px", color: T.text2 }}>{Math.round(discPct)}%</span>
@@ -2897,7 +2897,7 @@ return (
             {refGroups.map(group => {
               const subtotal = group.items.reduce((s, i) => s + i.amt, 0);
               return (
-                <div key={group.group} style={{ flex: "1 1 240px", maxWidth: "300px", display: "flex", flexDirection: "column", background: T.bg, border: "1px solid " + T.bord, borderRadius: "8px", overflow: "hidden" }}>
+                <div key={group.group} style={{ flex: "1 1 240px", display: "flex", flexDirection: "column", background: T.bg, border: "1px solid " + T.bord, borderRadius: "8px", overflow: "hidden" }}>
                   <div style={{ padding: "8px 12px", background: T.surf, borderBottom: "1px solid " + T.bord, fontSize: "12px", letterSpacing: "0.15em", color: T.text2, textTransform: "uppercase" }}>{group.group}</div>
                   {group.items.map(item => (
                     <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: "8px", padding: "6px 12px", borderBottom: "1px solid " + T.bord }}>

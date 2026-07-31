@@ -48,7 +48,7 @@ checks = [
     ('Settings tab',                 'Edit Budget Setup' in code),
     ('modals inside return tree',    code.rindex('editModal === "debt"') < code.rindex('  );\n}')),
     ('cs.body left-aligned',         'margin: "0"' in code),
-    ('cs.body wider',                '1440px' in code),
+    ('cs.body full width',           'maxWidth: "1440px"' not in code),
     ('Overview KPI auto-fit',        'repeat(auto-fit, minmax(180px, 1fr))' in code),
     # -- v8: Math integrity --
     ('Shared getReserveBal',         'function getReserveBal(' in code),
