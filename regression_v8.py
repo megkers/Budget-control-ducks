@@ -1,9 +1,20 @@
 with open('src/App.jsx','rb') as f:
     b = f.read()
 code = b.decode('utf-8')
+with open('src/agent.js','rb') as f:
+    ab = f.read()
+agent = ab.decode('utf-8')
 checks = [
     # -- Babel / ASCII safety --
     ('Non-ASCII bytes',              sum(1 for x in b if x > 127) == 0),
+    ('Non-ASCII bytes (agent.js)',   sum(1 for x in ab if x > 127) == 0),
+    # -- AI assistant --
+    ('Agent key storage key',        'budgetApiKey' in agent),
+    ('Agent SDK lazy loaded',        'await import("@anthropic-ai/sdk")' in agent),
+    ('Agent key never logged',       'console.log' not in agent),
+    ('Key input is type password',   'type="password"' in code),
+    ('Agent panel in render tree',   'renderAgentPanel()' in code),
+    ('Assistant privacy warning',    'SENDS YOUR DATA OFF THIS DEVICE' in code),
     ('Uses ?. optional chaining',    '?.' in code),
     ('Uses ?? nullish coalescing',   '??' in code),
     ('No obj-literal dot pattern',   '|| {items:[]}).items' not in code),

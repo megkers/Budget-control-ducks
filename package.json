@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.123.0",
     "d3-sankey": "^0.12.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

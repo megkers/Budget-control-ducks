@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { sankey as d3Sankey, sankeyLinkHorizontal } from "d3-sankey";
+import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey } from "./agent.js";
 
 // ------------
 // localStorage helpers
@@ -1806,10 +1807,20 @@ const [csvOutflow, setCsvOutflow] = useState("negative"); // single-amount sign 
 const [csvReviewRows, setCsvReviewRows] = useState([]);
 const [csvSkipped, setCsvSkipped] = useState(0);
 const [csvDupes, setCsvDupes] = useState(0);
+const [csvAutos, setCsvAutos] = useState(0); // rows pre-categorized by merchant memory
 const [csvDragOver, setCsvDragOver] = useState(false);
 const [expandedReserve, setExpandedReserve] = useState(null);
 const [search, setSearch] = useState("");
 const [showSearch, setShowSearch] = useState(false);
+
+// -- AI assistant --
+// apiKey is the saved, verified key. keyInput is what is being typed in
+// Settings and is never persisted until it verifies.
+const [apiKey, setApiKey] = useState(loadApiKey());
+const [keyInput, setKeyInput] = useState("");
+const [keyStatus, setKeyStatus] = useState("idle"); // idle | verifying | error
+const [keyError, setKeyError] = useState("");
+const [agentOpen, setAgentOpen] = useState(false);
 const [debtInputs, setDebtInputs] = useState({});
 const [projMonthly, setProjectMonthly] = useState({});
 const [showFlowInfo, setShowFlowInfo] = useState(false);
@@ -2179,6 +2190,71 @@ const renderInfoModal = (title, content, onClose) => {
           </button>
         </div>
         <div style={{ overflowY: "auto", padding: "16px 20px 20px", flex: 1 }}>{content}</div>
+      </div>
+    </div>
+  );
+};
+
+// Assistant sheet. Reuses the same bottom-sheet shell as the edit modals so it
+// reads as part of the app rather than a bolted-on chat widget. Opening it as a
+// sheet also means whichever tab you were reading is still there underneath.
+// The tool loop and conversation land in the body next; this is the connect gate.
+const renderAgentPanel = () => {
+  const example = (q) => (
+    <div key={q} style={{ background: T.bg, border: "1px solid " + T.bord, borderRadius: "6px", padding: "10px 12px", marginBottom: "8px", fontSize: "12px", color: T.text2 }}>{q}</div>
+  );
+  const examples = [
+    "Why am I short this month?",
+    "Where is most of my discretionary money going?",
+    "Can I cover a $340 vet bill without touching savings?",
+  ];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
+      onClick={e => { if (e.target === e.currentTarget) setAgentOpen(false); }}>
+      <div style={{ background: T.surf, borderRadius: "8px 8px 0 0", width: "100%", maxWidth: "600px", height: "85vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.blue }}>auto_awesome</span>
+            Assistant
+          </span>
+          <button onClick={() => setAgentOpen(false)} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>close</span>
+          </button>
+        </div>
+
+        <div style={{ overflowY: "auto", padding: "20px", flex: 1 }}>
+          {apiKey ? (
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "6px" }}>Connected and ready</div>
+              <div style={{ fontSize: "12px", color: T.text3, marginBottom: "16px", lineHeight: "1.6" }}>
+                Reading {MONTHS[month]} {year}. The conversation and tools are being built next; this panel is where they will appear.
+              </div>
+              <div style={{ ...cs.lbl, marginBottom: "10px" }}>Things you will be able to ask</div>
+              {examples.map(example)}
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "6px" }}>Ask about your budget</div>
+              <div style={{ fontSize: "12px", color: T.text3, marginBottom: "16px", lineHeight: "1.6" }}>
+                The assistant reads your buckets, bills, and spending so you can ask questions in plain language and get suggested changes you approve before anything is applied.
+              </div>
+
+              <div style={{ ...cs.lbl, marginBottom: "10px" }}>For example</div>
+              {examples.map(example)}
+
+              <div style={{ background: T.orangeFade, border: "1px solid #FFB34755", borderRadius: "4px", padding: "12px 14px", margin: "16px 0", fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
+                This is the one feature that sends your data off this device. It needs your own Anthropic API key, and your budget details go to Anthropic only when you ask something.
+              </div>
+
+              <button onClick={() => { setAgentOpen(false); setTab("settings"); }}
+                style={{ background: T.blue, border: "none", color: T.bg, padding: "12px 16px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", width: "100%", minHeight: "48px" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>settings</span>
+                Set up in Settings
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2813,6 +2889,14 @@ style={{ ...cs.inp, flex: 1, fontSize: "16px", padding: "8px 12px", minWidth: 0 
   style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, whiteSpace: "nowrap" }}>
   <span className="material-symbols-outlined" style={{ fontSize: "16px", color: T.blue }}>add_circle</span>
   Log Spend
+</button>
+{/* Assistant lives in the action row, not the tab bar: it reads across every
+    bucket rather than being one more slice of the budget, and opening it as a
+    sheet keeps whichever tab you were reading underneath. */}
+<button onClick={() => setAgentOpen(true)}
+  style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, whiteSpace: "nowrap" }}>
+  <span className="material-symbols-outlined" style={{ fontSize: "16px", color: T.blue }}>auto_awesome</span>
+  Ask
 </button>
 </div>
 {search.trim().length > 0 && (() => {
@@ -4355,6 +4439,83 @@ return (
       </button>
       </div>
     </div>
+
+    {/* AI Assistant */}
+    <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px 18px", marginBottom: "10px" }}>
+      <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "4px" }}>AI Assistant</div>
+      <div style={{ fontSize: "12px", color: T.text3, marginBottom: "14px", lineHeight: "1.5" }}>
+        Optional. Connect an Anthropic API key to ask questions about your budget and get suggested changes. Budget Control works fully without this.
+      </div>
+
+      {apiKey ? (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", background: T.greenBg, border: "1px solid " + T.greenBord, borderRadius: "4px", padding: "10px 12px", marginBottom: "12px" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.green }}>check_circle</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: T.text1 }}>Connected</div>
+              <div style={{ fontSize: "12px", color: T.text3, wordBreak: "break-all" }}>{maskKey(apiKey)}</div>
+            </div>
+          </div>
+          <button onClick={() => {
+            if (window.confirm("Remove your API key? The assistant will stop working until you add it again.")) {
+              clearApiKey(); setApiKey(""); setKeyInput(""); setKeyStatus("idle"); setKeyError("");
+            }
+          }} style={{ background: "transparent", border: "1px solid " + T.red, color: T.red, padding: "8px 16px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px", minHeight: "44px" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>key_off</span>
+            Remove Key
+          </button>
+        </div>
+      ) : (
+        <div>
+          {/* Stated at the point of decision, not buried. Everything else in this
+              app stays on the device, so the exception has to be explicit. */}
+          <div style={{ background: T.orangeFade, border: "1px solid #FFB34755", borderRadius: "4px", padding: "12px 14px", marginBottom: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+              <span className="material-symbols-outlined" style={{ fontSize: "16px", color: "#FFB347" }}>warning</span>
+              <span style={{ fontSize: "12px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>THIS SENDS YOUR DATA OFF THIS DEVICE</span>
+            </div>
+            <div style={{ fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
+              When you use the assistant, your budget amounts, bucket names, and transaction descriptions are sent to Anthropic to answer your question. Nothing is sent unless you use it. Your key is stored only in this browser and is billed to your own account.
+            </div>
+          </div>
+
+          <div style={{ fontSize: "12px", color: T.text3, marginBottom: "8px", lineHeight: "1.6" }}>
+            An API key is separate from a Claude Pro or Max subscription and is billed separately. Create one at{" "}
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style={{ color: T.blue }}>console.anthropic.com</a>
+            {" "}and add a few dollars of credit. Typical use costs well under $1 a month.
+          </div>
+
+          <input
+            type="password"
+            placeholder="sk-ant-..."
+            value={keyInput}
+            onChange={e => { setKeyInput(e.target.value); if (keyStatus === "error") { setKeyStatus("idle"); setKeyError(""); } }}
+            style={{ ...cs.inp, width: "100%", fontSize: "16px", padding: "10px 12px", marginBottom: "10px", boxSizing: "border-box" }}
+          />
+
+          {keyStatus === "error" && (
+            <div style={{ fontSize: "12px", color: T.red, marginBottom: "10px", lineHeight: "1.5" }}>{keyError}</div>
+          )}
+
+          <button
+            disabled={keyStatus === "verifying" || keyInput.trim().length === 0}
+            onClick={async () => {
+              const k = keyInput.trim();
+              setKeyStatus("verifying"); setKeyError("");
+              const res = await verifyApiKey(k);
+              if (res.ok) {
+                saveApiKey(k); setApiKey(k); setKeyInput(""); setKeyStatus("idle");
+              } else {
+                setKeyStatus("error"); setKeyError(res.error);
+              }
+            }}
+            style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 16px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: keyStatus === "verifying" ? "wait" : "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px", minHeight: "44px", opacity: (keyStatus === "verifying" || keyInput.trim().length === 0) ? 0.5 : 1 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{keyStatus === "verifying" ? "hourglass_top" : "vpn_key"}</span>
+            {keyStatus === "verifying" ? "Verifying..." : "Connect"}
+          </button>
+        </div>
+      )}
+    </div>
   </div>
 )}
 
@@ -4546,6 +4707,7 @@ return (
 {editModal === "reserves"  && renderEditReserves()}
 {editModal === "debt"      && renderEditDebtModal()}
 {editModal === "income"    && renderEditIncome()}
+{agentOpen                 && renderAgentPanel()}
 {importPreview && <ImportSummaryCard T={T} counts={importPreview.counts} onClose={() => { const p = importPreview.payload; setImportPreview(null); onImportCsv(p); }} />}
   </div>
 </div>
