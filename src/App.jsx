@@ -2677,14 +2677,14 @@ const renderLogSpend = () => {
           </div>
         )}
       </div>
-      <div style={{ padding: "8px 20px", overflowY: "auto", flex: 1 }}>
+      <div style={{ padding: "8px 0", overflowY: "auto", flex: 1 }}>
         {csvReviewRows.length === 0
-          ? <div style={{ padding: "24px 0", textAlign: "center", fontSize: "12px", color: T.text3, lineHeight: "1.6" }}>
+          ? <div style={{ padding: "24px 20px", textAlign: "center", fontSize: "12px", color: T.text3, lineHeight: "1.6" }}>
               No new spending rows found in this file.<br />
               Go Back to check the column mapping and which sign means money out.
             </div>
-          : csvReviewRows.map(row => (
-            <div key={row.rowId} style={{ display: "grid", gridTemplateColumns: "78px 1fr 84px 130px 34px 28px", gap: "8px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + T.bord }}>
+          : csvReviewRows.map((row, i) => (
+            <div key={row.rowId} style={{ display: "grid", gridTemplateColumns: "78px 1fr 84px 130px 34px 28px", gap: "8px", alignItems: "center", padding: "8px 20px", background: i % 2 === 1 ? T.bg : "transparent" }}>
               <div style={{ fontSize: "11px", color: T.text3 }}>{row.date}</div>
               <div style={{ fontSize: "12px", color: T.text1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {row.description || "(no description)"}
