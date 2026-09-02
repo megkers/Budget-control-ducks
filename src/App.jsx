@@ -1873,6 +1873,7 @@ const [csvOutflow, setCsvOutflow] = useState("negative"); // single-amount sign 
 const [csvReviewRows, setCsvReviewRows] = useState([]);
 const [csvSkipped, setCsvSkipped] = useState(0);
 const [csvDupes, setCsvDupes] = useState(0);
+const [csvAutos, setCsvAutos] = useState(0);
 const [csvDragOver, setCsvDragOver] = useState(false);
 const [expandedReserve, setExpandedReserve] = useState(null);
 const [search, setSearch] = useState("");
