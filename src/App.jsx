@@ -841,7 +841,7 @@ Import from CSV
       // Check if any spend data was found
       var hasSpend = Object.keys(newData).some(function(k) {
         var md = newData[k];
-        return Object.keys(md.spent || {}).some(function(id) { return md.spent[id] > 0; })
+        return Object.keys(md.spent || {}).some(function(id) { return md.spent[id] !== 0; })
           || (md.reserveTransactions || []).length > 0;
       });
       if (hasSpend) saveData(newData);
@@ -1872,6 +1872,7 @@ const [csvReviewRows, setCsvReviewRows] = useState([]);
 const [csvSkipped, setCsvSkipped] = useState(0);
 const [csvDupes, setCsvDupes] = useState(0);
 const [csvAutos, setCsvAutos] = useState(0);
+const [csvRefunds, setCsvRefunds] = useState(0);
 const [csvDragOver, setCsvDragOver] = useState(false);
 const [expandedReserve, setExpandedReserve] = useState(null);
 const [search, setSearch] = useState("");
@@ -1974,6 +1975,7 @@ setCsvReviewRows([]);
 setCsvSkipped(0);
 setCsvDupes(0);
 setCsvAutos(0);
+setCsvRefunds(0);
 setCsvDragOver(false);
 }
 function closeLogSpend() { resetCsv(); setEditModal(null); }
@@ -2019,26 +2021,31 @@ const rules = loadRules();
 const validBucket = {};
 buckets.forEach(b => { if (DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id)) validBucket[b.id] = true; });
 const seenThisImport = {};
-let skipped = 0, dupes = 0, autos = 0;
+let skipped = 0, dupes = 0, autos = 0, refunds = 0;
 const out = [];
 rawRows.forEach(r => {
 const date = csvParseDate(r[mapping.date]);
 let amount = null;
 if (useDC) {
 const deb = csvParseAmount(r[mapping.debit]);
-// A debit column holds positive money-out. Taking the absolute value here
-// turned every refund - and every row of a signed column mapped into this
-// slot - into a spend.
-if (deb != null && deb > 0) amount = deb;
+// A debit column holds positive money-out; a negative there is a correction.
+if (deb != null && deb !== 0) amount = deb;
+else if (mapping.credit !== -1) {
+const cred = csvParseAmount(r[mapping.credit]);
+// Money in, carried as negative spend so it nets against the bucket it is
+// assigned to rather than being thrown away.
+if (cred != null && cred !== 0) amount = -Math.abs(cred);
+}
 } else {
 const raw = csvParseAmount(r[mapping.amount]);
 if (raw != null && raw !== 0) {
 const isOut = outflow === "negative" ? raw < 0 : raw > 0;
-if (isOut) amount = Math.abs(raw);
+amount = isOut ? Math.abs(raw) : -Math.abs(raw);
 }
 }
 const description = (mapping.description !== -1 ? (r[mapping.description] || "") : "").trim();
-if (date == null || amount == null) { skipped++; return; } // malformed or a credit/payment, not a spend
+if (date == null || amount == null) { skipped++; return; } // malformed or blank
+if (amount < 0) refunds++;
 const ref = csvRowHash(date, amount, description);
 if (existingRefs[ref] || seenThisImport[ref]) { dupes++; return; }
 seenThisImport[ref] = true;
@@ -2055,7 +2062,7 @@ suggestedId: hit ? hit.bucketId : null,
 confidence: hit ? hit.confidence : null,
 });
 });
-return { out, skipped, dupes, autos };
+return { out, skipped, dupes, autos, refunds };
 }
 
 function applyMapping(rawRows, mapping, outflow) {
@@ -2064,6 +2071,7 @@ setCsvReviewRows(res.out);
 setCsvSkipped(res.skipped);
 setCsvDupes(res.dupes);
 setCsvAutos(res.autos);
+setCsvRefunds(res.refunds);
 }
 
 // Commit the categorized review rows. Rows without a bucket are left behind
@@ -2421,7 +2429,7 @@ const renderLogSpend = () => {
   const resOpts = buckets.filter(b => RESERVE_IDS_EDIT.includes(b.id));
   const mapPreview = csvStep === "map"
     ? parseCsvRows(csvRawRows, csvMapping, csvOutflow)
-    : { out: [], skipped: 0, dupes: 0, autos: 0 };
+    : { out: [], skipped: 0, dupes: 0, autos: 0, refunds: 0 };
   const readyCount = csvReviewRows.filter(r => r.bucketId).length;
   const colSelect = (field, label) => (
     <div>
@@ -2642,7 +2650,8 @@ const renderLogSpend = () => {
         <div style={{ fontSize: "12px", color: T.text2 }}>
           <span style={{ color: T.text1, fontWeight: "700" }}>{csvReviewRows.length}</span> to review
           {csvDupes > 0 && <span> - {csvDupes} duplicate{csvDupes !== 1 ? "s" : ""} skipped</span>}
-          {csvSkipped > 0 && <span> - {csvSkipped} non-spend/blank skipped</span>}
+          {csvRefunds > 0 && <span> - {csvRefunds} credit{csvRefunds !== 1 ? "s" : ""}</span>}
+          {csvSkipped > 0 && <span> - {csvSkipped} blank or unreadable skipped</span>}
         </div>
         {csvAutos > 0 && (
           <div style={{ fontSize: "11px", color: T.green, marginTop: "3px" }}>
@@ -2650,6 +2659,11 @@ const renderLogSpend = () => {
           </div>
         )}
         <div style={{ fontSize: "11px", color: T.text3, marginTop: "3px" }}>Categorizing a row also fills any other blank row from the same merchant. Rows left uncategorized are discarded when you close.</div>
+        {csvRefunds > 0 && (
+          <div style={{ fontSize: "11px", color: T.green, marginTop: "3px" }}>
+            Credits are shown negative and reduce whichever bucket you assign them to. Leave money that is not a refund uncategorized.
+          </div>
+        )}
         {csvReviewRows.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginTop: "10px", padding: "10px 12px", background: T.bg, borderRadius: "6px" }}>
             <span style={{ fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: T.text3, whiteSpace: "nowrap" }}>Set all rows to</span>
@@ -2663,24 +2677,27 @@ const renderLogSpend = () => {
           </div>
         )}
       </div>
-      <div style={{ padding: "8px 20px", overflowY: "auto", flex: 1 }}>
+      <div style={{ padding: "8px 0", overflowY: "auto", flex: 1 }}>
         {csvReviewRows.length === 0
-          ? <div style={{ padding: "24px 0", textAlign: "center", fontSize: "12px", color: T.text3, lineHeight: "1.6" }}>
+          ? <div style={{ padding: "24px 20px", textAlign: "center", fontSize: "12px", color: T.text3, lineHeight: "1.6" }}>
               No new spending rows found in this file.<br />
               Go Back to check the column mapping and which sign means money out.
             </div>
-          : csvReviewRows.map(row => (
-            <div key={row.rowId} style={{ display: "grid", gridTemplateColumns: "78px 1fr 84px 130px 34px 28px", gap: "8px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + T.bord }}>
+          : csvReviewRows.map((row, i) => (
+            <div key={row.rowId} style={{ display: "grid", gridTemplateColumns: "78px 1fr 84px 130px 34px 28px", gap: "8px", alignItems: "center", padding: "8px 20px", background: i % 2 === 1 ? T.bg : "transparent" }}>
               <div style={{ fontSize: "11px", color: T.text3 }}>{row.date}</div>
               <div style={{ fontSize: "12px", color: T.text1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {row.description || "(no description)"}
                 {merchantCounts[normalizeMerchant(row.description)] > 1 && (
                   <span style={{ marginLeft: "6px", fontSize: "10px", color: T.text3 }}>x{merchantCounts[normalizeMerchant(row.description)]}</span>
                 )}
+                {row.amount < 0 && (
+                  <span style={{ marginLeft: "6px", fontSize: "10px", letterSpacing: "0.08em", color: T.green }}>CREDIT</span>
+                )}
               </div>
               <input type="number" value={row.amount}
                 onChange={e => setCsvReviewRows(rows => rows.map(x => x.rowId === row.rowId ? { ...x, amount: parseFloat(e.target.value) || 0 } : x))}
-                style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", width: "100%", minWidth: 0, textAlign: "right" }} />
+                style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", width: "100%", minWidth: 0, textAlign: "right", color: row.amount < 0 ? T.green : T.text1 }} />
               {bucketPicker(row)}
               {/* Fixed-width slot so the chip appearing never shifts the picker. */}
               <div style={{ fontSize: "10px", letterSpacing: "0.08em", textAlign: "center", color: T.green }}>
@@ -3094,7 +3111,7 @@ return (
       const discBudget = discBuckets.reduce((s,b) => s+b.amount, 0);
       const discSpent = discIds.reduce((s,id) => s + (cur.spent[id] || 0), 0);
       const discLeft = discBudget - discSpent;
-      const discPct = Math.min(100, discBudget > 0 ? (discSpent / discBudget) * 100 : 0);
+      const discPct = Math.max(0, Math.min(100, discBudget > 0 ? (discSpent / discBudget) * 100 : 0));
       const over = discSpent > discBudget;
 
       const today = new Date();
@@ -3386,7 +3403,7 @@ return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             {discBuckets.map(b => {
               const spent = cur.spent[b.id] || 0;
-              const pct = b.amount > 0 ? Math.min(100, (spent / b.amount) * 100) : 0;
+              const pct = b.amount > 0 ? Math.max(0, Math.min(100, (spent / b.amount) * 100)) : 0;
               const remaining = b.amount - spent;
               const isOver = spent > b.amount;
               return (
@@ -3562,7 +3579,7 @@ return (
                         const spent = cur.spent[b.id] || 0;
                         const over = spent > b.amount;
                         const heightPct = b.amount / discBudget;
-                        const spentPct = Math.min(1, spent / b.amount);
+                        const spentPct = Math.max(0, Math.min(1, spent / b.amount));
                         const h = Math.max(8, Math.round(heightPct * (buckets.length * (barHeight + gap))));
                         return (
                           <div key={b.id} style={{ position: "relative", height: `${h}px`, background: "#2a3a50", borderRadius: "2px", overflow: "hidden" }}>
@@ -3602,7 +3619,7 @@ return (
             const spent = cur.spent[b.id] || 0;
             const rem = b.amount - spent;
             const over = spent > b.amount;
-            const pct = Math.min(100, (spent / b.amount) * 100);
+            const pct = Math.max(0, Math.min(100, (spent / b.amount) * 100));
             const open = expanded === b.id;
             return (
               <div key={b.id} style={{ background: T.surf, border: `1px solid ${over ? T.red : open ? b.color+"55" : T.bord}`, borderRadius: "8px", marginBottom: "10px", overflow: "hidden" }}>
@@ -3638,7 +3655,7 @@ return (
                     <div style={cs.lbl}>Log actual spend</div>
                     <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
                       <input type="number" placeholder={`Budget: ${b.amount}`}
-                        value={inputs[b.id] || (cur.spent[b.id] > 0 ? cur.spent[b.id] : "")}
+                        value={inputs[b.id] || (cur.spent[b.id] ? cur.spent[b.id] : "")}
                         onChange={e => setInputs(p => ({ ...p, [b.id]: e.target.value }))}
                         style={{ ...cs.inp, flex: 1 }} />
                       <Btn color={b.color} onClick={() => { setSpent(b.id, inputs[b.id] || cur.spent[b.id]); setInputs(p => ({ ...p, [b.id]: "" })); }}>Submit</Btn>
