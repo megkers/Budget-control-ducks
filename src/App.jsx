@@ -355,6 +355,73 @@ try { localStorage.setItem("budgetCsvMappings", JSON.stringify(m)); } catch(e) {
 }
 
 // ------------
+// Merchant memory: rule-based auto-categorization
+// ------------
+// budgetRules maps a normalized merchant string to the bucket the user last
+// chose for it: { pattern: { bucketId, count, updatedAt } }. Rules are learned
+// on every confirmed spend (CSV import and manual log) and applied to new
+// import rows, so repeat merchants arrive pre-categorized.
+function loadRules() {
+try { var r = localStorage.getItem("budgetRules"); return r ? JSON.parse(r) : {}; } catch(e) { return {}; }
+}
+function saveRules(r) {
+try { localStorage.setItem("budgetRules", JSON.stringify(r)); } catch(e) {}
+}
+// State/territory codes, used only to strip a trailing location off bank
+// descriptions ("TRADER JOES OAKLAND CA" -> "TRADER JOES").
+const MERCHANT_STATES = {
+AL:1, AK:1, AZ:1, AR:1, CA:1, CO:1, CT:1, DE:1, DC:1, FL:1, GA:1, HI:1, ID:1,
+IL:1, IN:1, IA:1, KS:1, KY:1, LA:1, ME:1, MD:1, MA:1, MI:1, MN:1, MS:1, MO:1,
+MT:1, NE:1, NV:1, NH:1, NJ:1, NM:1, NY:1, NC:1, ND:1, OH:1, OK:1, OR:1, PA:1,
+RI:1, SC:1, SD:1, TN:1, TX:1, UT:1, VT:1, VA:1, WA:1, WV:1, WI:1, WY:1, PR:1,
+};
+// Bank descriptions are noisy; normalization matters more than the matching
+// algorithm. Uppercase, drop apostrophes, split on punctuation, then drop any
+// token containing a digit (store numbers, dates, transaction ids) and a
+// trailing "CITY ST" location.
+function normalizeMerchant(desc) {
+var s = String(desc || "").toUpperCase().replace(/'/g, "");
+var tokens = s.split(/[^A-Z0-9]+/).filter(function(t) { return t && !/[0-9]/.test(t); });
+if (tokens.length > 1 && MERCHANT_STATES[tokens[tokens.length - 1]]) {
+tokens.pop();
+// The token before a state code is the city. Only drop it if doing so still
+// leaves a usable merchant name behind.
+if (tokens.length > 2) tokens.pop();
+}
+return tokens.join(" ");
+}
+// Look up a bucket for a description. Exact match on the normalized string
+// first; otherwise the longest rule that is a token-boundary prefix of this
+// merchant (or vice versa). Returns null when nothing matches.
+function matchRule(rules, desc) {
+var key = normalizeMerchant(desc);
+if (!key) return null;
+if (rules[key]) return { bucketId: rules[key].bucketId, pattern: key, confidence: 0.9 };
+var best = null;
+Object.keys(rules).forEach(function(pattern) {
+if (!pattern) return;
+if (key.indexOf(pattern + " ") !== 0 && pattern.indexOf(key + " ") !== 0) return;
+// Prefer the most specific rule, then the one seen most often.
+if (!best || pattern.length > best.length || (pattern.length === best.length && rules[pattern].count > rules[best].count)) best = pattern;
+});
+if (!best) return null;
+return { bucketId: rules[best].bucketId, pattern: best, confidence: 0.7 };
+}
+// Learn from a confirmed spend. The latest correction always wins, so changing
+// the bucket on a suggested row retrains the rule.
+function upsertRule(rules, desc, bucketId) {
+var key = normalizeMerchant(desc);
+if (!key || !bucketId) return rules;
+var prev = rules[key];
+rules[key] = {
+bucketId: bucketId,
+count: (prev && prev.bucketId === bucketId ? (prev.count || 0) : 0) + 1,
+updatedAt: new Date().toISOString().slice(0, 10),
+};
+return rules;
+}
+
+// ------------
 // Bill template for wizard
 // ------------
 const BILL_TEMPLATE = [
@@ -1877,6 +1944,9 @@ source: "manual",
 status: "confirmed",
 });
 setTransactions(t => [...t, rec]);
+// A manual log is the strongest signal there is about where a merchant
+// belongs, and it seeds merchant memory before the first CSV import.
+saveRules(upsertRule(loadRules(), txMerchant.trim(), txReserve));
 // spent[] stays the source of truth for all budget math; a confirmed manual
 // log adds to it directly. txReserve holds the chosen bucket id for both the
 // reserve and discretionary categories.
@@ -1905,6 +1975,7 @@ setCsvOutflow("negative");
 setCsvReviewRows([]);
 setCsvSkipped(0);
 setCsvDupes(0);
+setCsvAutos(0);
 setCsvDragOver(false);
 }
 function closeLogSpend() { resetCsv(); setEditModal(null); }
@@ -1935,13 +2006,19 @@ reader.readAsText(file);
 }
 
 // Turn raw rows into reviewable spend rows using the column mapping, dropping
-// malformed rows and exact duplicates of already-imported transactions.
+// malformed rows and exact duplicates of already-imported transactions. Rows
+// whose merchant matches a learned rule arrive pre-categorized.
 function applyMapping(rawRows, mapping, outflow) {
 const useDC = mapping.debit !== -1 && mapping.credit !== -1;
 const existingRefs = {};
 transactions.forEach(t => { if (t.sourceRef) existingRefs[t.sourceRef] = true; });
+const rules = loadRules();
+// A rule can outlive its bucket (renamed setup, re-run wizard). Only pre-fill
+// buckets the picker still offers, so a stale rule cannot commit into nothing.
+const validBucket = {};
+buckets.forEach(b => { if (DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id)) validBucket[b.id] = true; });
 const seenThisImport = {};
-let skipped = 0, dupes = 0;
+let skipped = 0, dupes = 0, autos = 0;
 const out = [];
 rawRows.forEach(r => {
 const date = csvParseDate(r[mapping.date]);
@@ -1961,11 +2038,23 @@ if (date == null || amount == null) { skipped++; return; } // malformed or a cre
 const ref = csvRowHash(date, amount, description);
 if (existingRefs[ref] || seenThisImport[ref]) { dupes++; return; }
 seenThisImport[ref] = true;
-out.push({ rowId: newTxnId(), date, amount, description, sourceRef: ref, bucketId: null });
+let hit = matchRule(rules, description);
+if (hit && !validBucket[hit.bucketId]) hit = null;
+if (hit) autos++;
+out.push({
+rowId: newTxnId(), date, amount, description, sourceRef: ref,
+bucketId: hit ? hit.bucketId : null,
+auto: !!hit,
+// Kept alongside bucketId so the row can tell a rule's guess from a user
+// correction, both for the "auto" chip and for the stored confidence.
+suggestedId: hit ? hit.bucketId : null,
+confidence: hit ? hit.confidence : null,
+});
 });
 setCsvReviewRows(out);
 setCsvSkipped(skipped);
 setCsvDupes(dupes);
+setCsvAutos(autos);
 }
 
 // Commit the categorized review rows. Rows without a bucket are left behind
@@ -1977,7 +2066,13 @@ if (!ready.length) return;
 const recs = ready.map(r => toTxnRecord({
 id: newTxnId(), date: r.date, merchant: r.description, amount: r.amount,
 bucketId: r.bucketId, source: "csv", sourceRef: r.sourceRef, status: "confirmed",
+// A row the user re-bucketed is their own call, not the rule's guess.
+confidence: r.auto && r.bucketId === r.suggestedId ? r.confidence : 1,
 }));
+// Learn from every committed row. Rows the user corrected retrain the rule,
+// since upsertRule takes the bucket that was actually confirmed.
+const rules = ready.reduce((acc, r) => upsertRule(acc, r.description, r.bucketId), loadRules());
+saveRules(rules);
 setTransactions(t => [...t, ...recs]);
 setData(d => {
 const next = { ...d };
@@ -2336,7 +2431,7 @@ const renderLogSpend = () => {
       {(logMode === "manual" || csvStep === "upload") && (
         <div style={{ padding: "16px 20px 0" }}>
           <div style={{ background: T.bg, borderRadius: "4px", padding: "3px", display: "flex" }}>
-            {[["manual", "Log one"], ["csv", "Import CSV"]].map(([val, label]) => (
+            {[["manual", "Manual Entry"], ["csv", "Upload"]].map(([val, label]) => (
               <div key={val} onClick={() => { if (val === "csv") { setLogMode("csv"); setCsvStep("upload"); } else { setLogMode("manual"); } }}
                 style={{ flex: 1, padding: "6px 0", textAlign: "center", cursor: "pointer", borderRadius: "4px", fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", background: logMode === val ? T.blue : "transparent", color: logMode === val ? T.bg : T.text2, fontWeight: logMode === val ? "700" : "400", transition: "all 0.15s" }}>
                 {label}
@@ -2456,19 +2551,28 @@ const renderLogSpend = () => {
           {csvDupes > 0 && <span> - {csvDupes} duplicate{csvDupes !== 1 ? "s" : ""} skipped</span>}
           {csvSkipped > 0 && <span> - {csvSkipped} non-spend/blank skipped</span>}
         </div>
+        {csvAutos > 0 && (
+          <div style={{ fontSize: "11px", color: T.green, marginTop: "3px" }}>
+            {csvAutos} pre-categorized from merchant memory - change any that look wrong.
+          </div>
+        )}
         <div style={{ fontSize: "11px", color: T.text3, marginTop: "3px" }}>Assign a bucket to each row you want to keep. Uncategorized rows are discarded when you close.</div>
       </div>
       <div style={{ padding: "8px 20px", overflowY: "auto", flex: 1 }}>
         {csvReviewRows.length === 0
           ? <div style={{ padding: "24px 0", textAlign: "center", fontSize: "12px", color: T.text3 }}>No new spending rows found in this file.</div>
           : csvReviewRows.map(row => (
-            <div key={row.rowId} style={{ display: "grid", gridTemplateColumns: "78px 1fr 84px 130px 28px", gap: "8px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + T.bord }}>
+            <div key={row.rowId} style={{ display: "grid", gridTemplateColumns: "78px 1fr 84px 130px 34px 28px", gap: "8px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + T.bord }}>
               <div style={{ fontSize: "11px", color: T.text3 }}>{row.date}</div>
               <div style={{ fontSize: "12px", color: T.text1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.description || "(no description)"}</div>
               <input type="number" value={row.amount}
                 onChange={e => setCsvReviewRows(rows => rows.map(x => x.rowId === row.rowId ? { ...x, amount: parseFloat(e.target.value) || 0 } : x))}
                 style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", width: "100%", minWidth: 0, textAlign: "right" }} />
               {bucketPicker(row)}
+              {/* Fixed-width slot so the chip appearing never shifts the picker. */}
+              <div style={{ fontSize: "10px", letterSpacing: "0.08em", textAlign: "center", color: T.green }}>
+                {row.auto && row.bucketId === row.suggestedId ? "auto" : ""}
+              </div>
               <button onClick={() => setCsvReviewRows(rows => rows.filter(x => x.rowId !== row.rowId))}
                 style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>close</span>
