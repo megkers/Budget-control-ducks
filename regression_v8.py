@@ -14,6 +14,8 @@ checks = [
     ('Agent key never logged',       'console.log' not in agent),
     ('Key verify uses cheap model',  'model: VERIFY_MODEL' in agent),
     ('Errors stripped of raw JSON',  'function humanMessage' in agent),
+    ('Offline detected by status',   'status === undefined' in agent),
+    ('No minify-fragile classnames', 'constructor.name' not in agent),
     ('Identity-linked key handled',  'anthropic-workspace-id' in agent),
     ('Key input is type password',   'type="password"' in code),
     ('Agent panel in render tree',   'renderAgentPanel()' in code),

@@ -104,6 +104,14 @@ export function describeApiError(e) {
   }
   if (status === 429) return "Rate limited by Anthropic. Wait a moment and try again.";
   if (status >= 500) return "Anthropic had a server error. Try again shortly.";
-  if (e && e.name === "APIConnectionError") return "Could not reach Anthropic. Check your connection.";
+  // A request that never reached the API carries no status. That is the only
+  // signal worth trusting here: the SDK does not set .name on these errors, and
+  // checking the class name would work in dev and then break in production,
+  // where the build minifies class names away.
+  if (status === undefined) {
+    if (/timed out/i.test(raw)) return "Anthropic did not respond in time. Try again.";
+    if (/abort/i.test(raw)) return "That request was cancelled.";
+    return "Could not reach Anthropic. Check your connection and try again.";
+  }
   return msg || "Something went wrong.";
 }
