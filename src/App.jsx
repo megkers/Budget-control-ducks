@@ -477,6 +477,63 @@ function resolveFixedDebtLinks(billItems, debts) {
   ));
 }
 
+// ------------
+// Crop geometry (screenshot import)
+// ------------
+// Pure and module level so the drag maths can be tested without a browser.
+// All rects are normalized 0..1 against the displayed image.
+
+// Keep a rect the right way round and inside the image. Dragging a corner past
+// its opposite side is normal behaviour, not an error, so a negative width is
+// flipped rather than rejected.
+function cropNormalize(r) {
+  var x = r.w < 0 ? r.x + r.w : r.x;
+  var y = r.h < 0 ? r.y + r.h : r.y;
+  var w = Math.abs(r.w), h = Math.abs(r.h);
+  if (x < 0) { w += x; x = 0; }
+  if (y < 0) { h += y; y = 0; }
+  if (x + w > 1) w = 1 - x;
+  if (y + h > 1) h = 1 - y;
+  return { x: x, y: y, w: Math.max(0, w), h: Math.max(0, h) };
+}
+
+// What a press at (nx, ny) should do. Corners and edges win over the interior
+// so a finger landing near an edge resizes rather than dragging the whole box.
+// tol is in normalized units, sized by the caller from a real touch target.
+function cropHit(nx, ny, r, tolX, tolY) {
+  var nearL = Math.abs(nx - r.x) <= tolX;
+  var nearR = Math.abs(nx - (r.x + r.w)) <= tolX;
+  var nearT = Math.abs(ny - r.y) <= tolY;
+  var nearB = Math.abs(ny - (r.y + r.h)) <= tolY;
+  var inX = nx >= r.x - tolX && nx <= r.x + r.w + tolX;
+  var inY = ny >= r.y - tolY && ny <= r.y + r.h + tolY;
+  if (nearL && nearT) return "nw";
+  if (nearR && nearT) return "ne";
+  if (nearL && nearB) return "sw";
+  if (nearR && nearB) return "se";
+  if (nearL && inY) return "w";
+  if (nearR && inY) return "e";
+  if (nearT && inX) return "n";
+  if (nearB && inX) return "s";
+  if (nx > r.x && nx < r.x + r.w && ny > r.y && ny < r.y + r.h) return "move";
+  return "draw";
+}
+
+// Apply a drag of (dx, dy) to the rect the press started on.
+function cropApply(mode, r0, dx, dy) {
+  if (mode === "move") {
+    var mx = Math.min(1 - r0.w, Math.max(0, r0.x + dx));
+    var my = Math.min(1 - r0.h, Math.max(0, r0.y + dy));
+    return { x: mx, y: my, w: r0.w, h: r0.h };
+  }
+  var x = r0.x, y = r0.y, w = r0.w, h = r0.h;
+  if (mode.indexOf("w") !== -1) { x = r0.x + dx; w = r0.w - dx; }
+  if (mode.indexOf("e") !== -1) { w = r0.w + dx; }
+  if (mode.indexOf("n") !== -1) { y = r0.y + dy; h = r0.h - dy; }
+  if (mode.indexOf("s") !== -1) { h = r0.h + dy; }
+  return cropNormalize({ x: x, y: y, w: w, h: h });
+}
+
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 // Where "tell me you want this" goes. The app is static with no server and no
@@ -2919,7 +2976,7 @@ const renderLogSpend = () => {
       {csvStep === "crop" && shotImg && (<>
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
         <div style={{ fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
-          Drag a box around just the transaction rows. Only what is inside the box is sent, so leave out your balance, account number and name. The box starts below the top of the image, where those usually sit.
+          Only what is inside the box is sent, so leave out your balance, account number and name. Drag the box to move it, drag a corner or edge to resize, or drag on the image outside the box to start a new one.
         </div>
 
         {/* Normalized 0..1 coordinates, converted to pixels only at crop time,
@@ -2927,29 +2984,59 @@ const renderLogSpend = () => {
         <div ref={cropRef}
           onPointerDown={e => {
             const r = cropRef.current.getBoundingClientRect();
-            cropStart.current = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+            const nx = (e.clientX - r.left) / r.width;
+            const ny = (e.clientY - r.top) / r.height;
+            // A finger is about 44px wide, so the grab zone is sized in real
+            // pixels and converted, rather than being a normalized guess that
+            // would shrink on a large image and grow on a small one.
+            const mode = cropHit(nx, ny, shotRect, 22 / r.width, 22 / r.height);
+            cropStart.current = { mode, nx, ny, rect0: shotRect };
             e.currentTarget.setPointerCapture(e.pointerId);
-            setShotRect({ x: cropStart.current.x, y: cropStart.current.y, w: 0, h: 0 });
+            if (mode === "draw") setShotRect({ x: nx, y: ny, w: 0, h: 0 });
           }}
           onPointerMove={e => {
-            if (!cropStart.current) return;
+            const c = cropStart.current;
+            if (!c) return;
             const r = cropRef.current.getBoundingClientRect();
-            const cx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-            const cy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-            const s0 = cropStart.current;
-            setShotRect({ x: Math.min(s0.x, cx), y: Math.min(s0.y, cy), w: Math.abs(cx - s0.x), h: Math.abs(cy - s0.y) });
+            const nx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+            const ny = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+            if (c.mode === "draw") {
+              setShotRect(cropNormalize({ x: c.nx, y: c.ny, w: nx - c.nx, h: ny - c.ny }));
+            } else {
+              setShotRect(cropApply(c.mode, c.rect0, nx - c.nx, ny - c.ny));
+            }
           }}
-          onPointerUp={e => {
+          onPointerUp={() => {
+            const wasDraw = cropStart.current && cropStart.current.mode === "draw";
             cropStart.current = null;
-            // A stray tap would otherwise leave a zero-size crop and send a
-            // one-pixel image, so anything too small to be a selection is
-            // treated as a miss and the previous box is restored.
-            setShotRect(r => (r.w < 0.05 || r.h < 0.03) ? { x: 0.02, y: 0.15, w: 0.96, h: 0.8 } : r);
+            // A tap on bare image would otherwise leave a zero-size crop and
+            // send a one-pixel picture. Only a new-box gesture can do that, so
+            // only that one is second-guessed; a small deliberate resize stands.
+            if (wasDraw) setShotRect(r => (r.w < 0.05 || r.h < 0.03) ? { x: 0, y: 0, w: 1, h: 1 } : r);
           }}
           style={{ position: "relative", width: "100%", touchAction: "none", cursor: "crosshair", overflow: "hidden", borderRadius: "6px", background: T.bg, userSelect: "none", maxHeight: "48vh" }}>
           <img src={shotImg.src} alt="" draggable={false}
             style={{ display: "block", width: "100%", maxHeight: "48vh", objectFit: "contain", pointerEvents: "none" }} />
-          <div style={{ position: "absolute", left: (shotRect.x * 100) + "%", top: (shotRect.y * 100) + "%", width: (shotRect.w * 100) + "%", height: (shotRect.h * 100) + "%", border: "2px solid " + T.blue, boxShadow: "0 0 0 9999px rgba(0,0,0,0.6)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", left: (shotRect.x * 100) + "%", top: (shotRect.y * 100) + "%", width: (shotRect.w * 100) + "%", height: (shotRect.h * 100) + "%", border: "2px solid " + T.blue, boxShadow: "0 0 0 9999px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
+            {/* Drawn, not interactive: the container owns every pointer event
+                and works out what was grabbed. These only say where to grab. */}
+            {[["nw", 0, 0], ["ne", 1, 0], ["sw", 0, 1], ["se", 1, 1]].map(([id, hx, hy]) => (
+              <div key={id} style={{ position: "absolute", left: (hx * 100) + "%", top: (hy * 100) + "%", width: "16px", height: "16px", marginLeft: "-8px", marginTop: "-8px", background: T.blue, border: "2px solid " + T.bg, borderRadius: "3px" }} />
+            ))}
+          </div>
+        </div>
+
+        {/* An already-cropped picture needs no crop, and re-drawing the box by
+            hand on a phone is the fiddliest thing in this flow. One tap. */}
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button onClick={() => setShotRect({ x: 0, y: 0, w: 1, h: 1 })}
+            style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "10px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px" }}>
+            Use whole image
+          </button>
+          <button onClick={() => setShotRect({ x: 0.02, y: 0.15, w: 0.96, h: 0.8 })}
+            style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "10px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px" }}>
+            Skip the header
+          </button>
         </div>
 
         {shotError && (
