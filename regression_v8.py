@@ -1,9 +1,31 @@
 with open('src/App.jsx','rb') as f:
     b = f.read()
 code = b.decode('utf-8')
+with open('src/agent.js','rb') as f:
+    ab = f.read()
+agent = ab.decode('utf-8')
 checks = [
     # -- Babel / ASCII safety --
     ('Non-ASCII bytes',              sum(1 for x in b if x > 127) == 0),
+    ('Non-ASCII bytes (agent.js)',   sum(1 for x in ab if x > 127) == 0),
+    # -- AI assistant --
+    ('Agent key storage key',        'budgetApiKey' in agent),
+    ('Agent SDK lazy loaded',        'await import("@anthropic-ai/sdk")' in agent),
+    ('Agent key never logged',       'console.log' not in agent),
+    ('Key verify uses cheap model',  'model: VERIFY_MODEL' in agent),
+    ('Errors stripped of raw JSON',  'function humanMessage' in agent),
+    ('Offline detected by status',   'status === undefined' in agent),
+    ('No minify-fragile classnames', 'constructor.name' not in agent),
+    ('Identity-linked key handled',  'anthropic-workspace-id' in agent),
+    ('Key input is type password',   'type="password"' in code),
+    ('Agent panel in render tree',   'renderAgentPanel()' in code),
+    ('Key modal in render tree',     'renderKeyModal()' in code),
+    ('Settings shows key status',    'No key connected' in code),
+    ('Connect opens the modal',      'Connect My AI Assistant' in code),
+    ('Assistant privacy warning',    'SENDS YOUR DATA OFF THIS DEVICE' in code),
+    ('Assistant marked coming soon', 'COMING SOON' in code),
+    ('Assistant survey link',        'SURVEY_URL' in code),
+    ('No analytics script tag',      'googletagmanager' not in code and 'plausible.io' not in code),
     ('Uses ?. optional chaining',    '?.' in code),
     ('Uses ?? nullish coalescing',   '??' in code),
     ('No obj-literal dot pattern',   '|| {items:[]}).items' not in code),
