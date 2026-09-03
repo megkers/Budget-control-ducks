@@ -23,7 +23,7 @@ checks = [
     ('Extraction is schema bound',   'json_schema' in agent),
     ('Extract never throws',         'return { ok: false, rows: [], error: describeApiError(e) }' in agent),
     ('Crop step in modal',           'csvStep === "crop"' in code),
-    ('Screenshot needs a key',       '{apiKey && (' in code),
+    ('No key routes to key modal',  'Requires a Claude workspace API key' in code),
     ('Screenshot reuses row hash',   'parseShotRows' in code),
     ('Low confidence flagged',       'LOW_CONFIDENCE' in code),
     ('Object URL released',          'revokeObjectURL' in code),

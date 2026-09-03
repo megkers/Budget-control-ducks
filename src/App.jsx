@@ -2865,15 +2865,17 @@ const renderLogSpend = () => {
           <input type="file" accept=".csv,text/csv" style={{ display: "none" }}
             onChange={e => { if (e.target.files[0]) handleCsvFile(e.target.files[0]); e.target.value = ""; }} />
         </label>
-        {/* Screenshot capture. Hidden without a key rather than shown broken:
-            it cannot work without one, and the Settings section is where that
-            decision belongs. A plain file input gives us the OS sheet (Photo
-            Library / Take Photo / Files) for free on a phone. */}
-        {apiKey && (
+        {/* Screenshot capture. Shown whether or not a key is connected: hiding
+            it meant nobody discovered the feature, and the version without a
+            key has somewhere useful to go. With a key this is a plain file
+            input, which gives us the OS sheet (Photo Library / Take Photo /
+            Files) for free on a phone. Without one it opens the key modal, so
+            the requirement and the way to satisfy it are the same tap. */}
+        {apiKey ? (
           <label style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 16px", border: "1px solid " + T.bord, borderRadius: "8px", cursor: "pointer", background: T.bg }}>
             <span className="material-symbols-outlined" style={{ fontSize: "22px", color: T.blue }}>photo_camera</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1 }}>Or read a screenshot</div>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1 }}>Read a screenshot</div>
               <div style={{ fontSize: "11px", color: T.text3, lineHeight: "1.5" }}>
                 Best for a few recent rows. You crop it first, so only the rows you select leave your device.
               </div>
@@ -2881,6 +2883,18 @@ const renderLogSpend = () => {
             <input type="file" accept="image/*" style={{ display: "none" }}
               onChange={e => { if (e.target.files[0]) handleScreenshotFile(e.target.files[0]); e.target.value = ""; }} />
           </label>
+        ) : (
+          <button onClick={() => { setKeyInput(""); setKeyStatus("idle"); setKeyError(""); setKeyModalOpen(true); }}
+            style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 16px", border: "1px solid " + T.bord, borderRadius: "8px", cursor: "pointer", background: T.bg, width: "100%", textAlign: "left", fontFamily: "DM Mono, monospace" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "22px", color: T.text3 }}>photo_camera</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1 }}>Read a screenshot</div>
+              <div style={{ fontSize: "11px", color: T.text3, lineHeight: "1.5" }}>
+                Requires a Claude workspace API key. Tap to connect one.
+              </div>
+            </div>
+            <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.text3 }}>chevron_right</span>
+          </button>
         )}
         {csvRawRows.length > 0 && (
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
