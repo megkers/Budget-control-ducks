@@ -356,6 +356,73 @@ try { localStorage.setItem("budgetCsvMappings", JSON.stringify(m)); } catch(e) {
 }
 
 // ------------
+// Merchant memory: rule-based auto-categorization
+// ------------
+// budgetRules maps a normalized merchant string to the bucket the user last
+// chose for it: { pattern: { bucketId, count, updatedAt } }. Rules are learned
+// on every confirmed spend (CSV import and manual log) and applied to new
+// import rows, so repeat merchants arrive pre-categorized.
+function loadRules() {
+try { var r = localStorage.getItem("budgetRules"); return r ? JSON.parse(r) : {}; } catch(e) { return {}; }
+}
+function saveRules(r) {
+try { localStorage.setItem("budgetRules", JSON.stringify(r)); } catch(e) {}
+}
+// State/territory codes, used only to strip a trailing location off bank
+// descriptions ("TRADER JOES OAKLAND CA" -> "TRADER JOES").
+const MERCHANT_STATES = {
+AL:1, AK:1, AZ:1, AR:1, CA:1, CO:1, CT:1, DE:1, DC:1, FL:1, GA:1, HI:1, ID:1,
+IL:1, IN:1, IA:1, KS:1, KY:1, LA:1, ME:1, MD:1, MA:1, MI:1, MN:1, MS:1, MO:1,
+MT:1, NE:1, NV:1, NH:1, NJ:1, NM:1, NY:1, NC:1, ND:1, OH:1, OK:1, OR:1, PA:1,
+RI:1, SC:1, SD:1, TN:1, TX:1, UT:1, VT:1, VA:1, WA:1, WV:1, WI:1, WY:1, PR:1,
+};
+// Bank descriptions are noisy; normalization matters more than the matching
+// algorithm. Uppercase, drop apostrophes, split on punctuation, then drop any
+// token containing a digit (store numbers, dates, transaction ids) and a
+// trailing "CITY ST" location.
+function normalizeMerchant(desc) {
+var s = String(desc || "").toUpperCase().replace(/'/g, "");
+var tokens = s.split(/[^A-Z0-9]+/).filter(function(t) { return t && !/[0-9]/.test(t); });
+if (tokens.length > 1 && MERCHANT_STATES[tokens[tokens.length - 1]]) {
+tokens.pop();
+// The token before a state code is the city. Only drop it if doing so still
+// leaves a usable merchant name behind.
+if (tokens.length > 2) tokens.pop();
+}
+return tokens.join(" ");
+}
+// Look up a bucket for a description. Exact match on the normalized string
+// first; otherwise the longest rule that is a token-boundary prefix of this
+// merchant (or vice versa). Returns null when nothing matches.
+function matchRule(rules, desc) {
+var key = normalizeMerchant(desc);
+if (!key) return null;
+if (rules[key]) return { bucketId: rules[key].bucketId, pattern: key, confidence: 0.9 };
+var best = null;
+Object.keys(rules).forEach(function(pattern) {
+if (!pattern) return;
+if (key.indexOf(pattern + " ") !== 0 && pattern.indexOf(key + " ") !== 0) return;
+// Prefer the most specific rule, then the one seen most often.
+if (!best || pattern.length > best.length || (pattern.length === best.length && rules[pattern].count > rules[best].count)) best = pattern;
+});
+if (!best) return null;
+return { bucketId: rules[best].bucketId, pattern: best, confidence: 0.7 };
+}
+// Learn from a confirmed spend. The latest correction always wins, so changing
+// the bucket on a suggested row retrains the rule.
+function upsertRule(rules, desc, bucketId) {
+var key = normalizeMerchant(desc);
+if (!key || !bucketId) return rules;
+var prev = rules[key];
+rules[key] = {
+bucketId: bucketId,
+count: (prev && prev.bucketId === bucketId ? (prev.count || 0) : 0) + 1,
+updatedAt: new Date().toISOString().slice(0, 10),
+};
+return rules;
+}
+
+// ------------
 // Bill template for wizard
 // ------------
 const BILL_TEMPLATE = [
@@ -775,7 +842,7 @@ Import from CSV
       // Check if any spend data was found
       var hasSpend = Object.keys(newData).some(function(k) {
         var md = newData[k];
-        return Object.keys(md.spent || {}).some(function(id) { return md.spent[id] > 0; })
+        return Object.keys(md.spent || {}).some(function(id) { return md.spent[id] !== 0; })
           || (md.reserveTransactions || []).length > 0;
       });
       if (hasSpend) saveData(newData);
@@ -1729,11 +1796,11 @@ const T = THEMES[resolvedMode];
 const cs = {
   page: { minHeight: "100vh", background: T.bg, color: T.text1, fontFamily: "DM Mono, monospace" },
   header: { borderBottom: "1px solid " + T.bord, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" },
-  sel: { background: T.surf, border: "1px solid " + T.bord, color: T.text1, padding: "7px 10px", borderRadius: "4px", fontSize: "12px", cursor: "pointer" },
+  sel: { background: T.surf, border: "1px solid " + T.bord, color: T.text1, padding: "7px 10px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace" },
   tabs: { display: "flex", borderBottom: "1px solid " + T.bord, padding: "0 24px", overflowX: "auto", overflowY: "hidden", minHeight: "42px", scrollbarWidth: "none", msOverflowStyle: "none" },
   body: { padding: "20px 24px", margin: "0" },
   lbl: { fontSize: "12px", letterSpacing: "0.12em", color: T.text2, textTransform: "uppercase", marginBottom: "4px" },
-  inp: { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "13px", boxSizing: "border-box" },
+  inp: { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "13px", boxSizing: "border-box", fontFamily: "DM Mono, monospace" },
 };
 function Card({ children, border, style, onClick }) {
   return <div onClick={onClick} style={{ background: T.surf, border: "1px solid " + (border || T.bord), borderRadius: "8px", padding: "16px 18px", marginBottom: "10px", ...style }}>{children}</div>;
@@ -1793,11 +1860,9 @@ const [txMerchant, setTxMerchant] = useState("");
 const [txAmount, setTxAmount] = useState("");
 const [txDate, setTxDate] = useState(() => new Date().toISOString().slice(0, 10));
 const [txReserve, setTxReserve] = useState("bill008");
-const [txCategory, setTxCategory] = useState("reserve"); // "reserve" or "discretionary"
-// CSV import flow (inside the Log Spend modal). logMode toggles manual entry vs
+// CSV import flow (inside the Log Spend modal). csvStep drives the whole
 // upload; csvStep walks upload -> map -> review. Nothing is committed until the
 // user hits Submit on the review step (single-session; leftovers are discarded).
-const [logMode, setLogMode] = useState("manual"); // "manual" | "csv"
 const [csvStep, setCsvStep] = useState("upload");  // "upload" | "map" | "review"
 const [csvFileName, setCsvFileName] = useState("");
 const [csvHeaders, setCsvHeaders] = useState([]);
@@ -1808,6 +1873,7 @@ const [csvReviewRows, setCsvReviewRows] = useState([]);
 const [csvSkipped, setCsvSkipped] = useState(0);
 const [csvDupes, setCsvDupes] = useState(0);
 const [csvAutos, setCsvAutos] = useState(0); // rows pre-categorized by merchant memory
+const [csvRefunds, setCsvRefunds] = useState(0);
 const [csvDragOver, setCsvDragOver] = useState(false);
 const [expandedReserve, setExpandedReserve] = useState(null);
 const [search, setSearch] = useState("");
@@ -1888,6 +1954,9 @@ source: "manual",
 status: "confirmed",
 });
 setTransactions(t => [...t, rec]);
+// A manual log is the strongest signal there is about where a merchant
+// belongs, and it seeds merchant memory before the first CSV import.
+saveRules(upsertRule(loadRules(), txMerchant.trim(), txReserve));
 // spent[] stays the source of truth for all budget math; a confirmed manual
 // log adds to it directly. txReserve holds the chosen bucket id for both the
 // reserve and discretionary categories.
@@ -1906,7 +1975,6 @@ setEditModal(null);
 
 // ---- CSV import (flat bank/CC exports) ----
 function resetCsv() {
-setLogMode("manual");
 setCsvStep("upload");
 setCsvFileName("");
 setCsvHeaders([]);
@@ -1916,6 +1984,8 @@ setCsvOutflow("negative");
 setCsvReviewRows([]);
 setCsvSkipped(0);
 setCsvDupes(0);
+setCsvAutos(0);
+setCsvRefunds(0);
 setCsvDragOver(false);
 }
 function closeLogSpend() { resetCsv(); setEditModal(null); }
@@ -1946,37 +2016,72 @@ reader.readAsText(file);
 }
 
 // Turn raw rows into reviewable spend rows using the column mapping, dropping
-// malformed rows and exact duplicates of already-imported transactions.
-function applyMapping(rawRows, mapping, outflow) {
-const useDC = mapping.debit !== -1 && mapping.credit !== -1;
+// malformed rows and exact duplicates of already-imported transactions. Rows
+// whose merchant matches a learned rule arrive pre-categorized.
+function parseCsvRows(rawRows, mapping, outflow) {
+// A debit column alone is enough to know money-out; requiring a credit column
+// too used to drop the file into the signed-amount branch with no amount
+// column mapped, which silently skipped every row.
+const useDC = mapping.debit !== -1;
 const existingRefs = {};
 transactions.forEach(t => { if (t.sourceRef) existingRefs[t.sourceRef] = true; });
+const rules = loadRules();
+// A rule can outlive its bucket (renamed setup, re-run wizard). Only pre-fill
+// buckets the picker still offers, so a stale rule cannot commit into nothing.
+const validBucket = {};
+buckets.forEach(b => { if (DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id)) validBucket[b.id] = true; });
 const seenThisImport = {};
-let skipped = 0, dupes = 0;
+let skipped = 0, dupes = 0, autos = 0, refunds = 0;
 const out = [];
 rawRows.forEach(r => {
 const date = csvParseDate(r[mapping.date]);
 let amount = null;
 if (useDC) {
 const deb = csvParseAmount(r[mapping.debit]);
-if (deb != null && deb !== 0) amount = Math.abs(deb); // debit column = money out
+// A debit column holds positive money-out; a negative there is a correction.
+if (deb != null && deb !== 0) amount = deb;
+else if (mapping.credit !== -1) {
+const cred = csvParseAmount(r[mapping.credit]);
+// Money in, carried as negative spend so it nets against the bucket it is
+// assigned to rather than being thrown away.
+if (cred != null && cred !== 0) amount = -Math.abs(cred);
+}
 } else {
 const raw = csvParseAmount(r[mapping.amount]);
 if (raw != null && raw !== 0) {
 const isOut = outflow === "negative" ? raw < 0 : raw > 0;
-if (isOut) amount = Math.abs(raw);
+amount = isOut ? Math.abs(raw) : -Math.abs(raw);
 }
 }
 const description = (mapping.description !== -1 ? (r[mapping.description] || "") : "").trim();
-if (date == null || amount == null) { skipped++; return; } // malformed or a credit/payment, not a spend
+if (date == null || amount == null) { skipped++; return; } // malformed or blank
+if (amount < 0) refunds++;
 const ref = csvRowHash(date, amount, description);
 if (existingRefs[ref] || seenThisImport[ref]) { dupes++; return; }
 seenThisImport[ref] = true;
-out.push({ rowId: newTxnId(), date, amount, description, sourceRef: ref, bucketId: null });
+let hit = matchRule(rules, description);
+if (hit && !validBucket[hit.bucketId]) hit = null;
+if (hit) autos++;
+out.push({
+rowId: newTxnId(), date, amount, description, sourceRef: ref,
+bucketId: hit ? hit.bucketId : null,
+auto: !!hit,
+// Kept alongside bucketId so the row can tell a rule's guess from a user
+// correction, both for the "auto" chip and for the stored confidence.
+suggestedId: hit ? hit.bucketId : null,
+confidence: hit ? hit.confidence : null,
 });
-setCsvReviewRows(out);
-setCsvSkipped(skipped);
-setCsvDupes(dupes);
+});
+return { out, skipped, dupes, autos, refunds };
+}
+
+function applyMapping(rawRows, mapping, outflow) {
+const res = parseCsvRows(rawRows, mapping, outflow);
+setCsvReviewRows(res.out);
+setCsvSkipped(res.skipped);
+setCsvDupes(res.dupes);
+setCsvAutos(res.autos);
+setCsvRefunds(res.refunds);
 }
 
 // Commit the categorized review rows. Rows without a bucket are left behind
@@ -1988,7 +2093,13 @@ if (!ready.length) return;
 const recs = ready.map(r => toTxnRecord({
 id: newTxnId(), date: r.date, merchant: r.description, amount: r.amount,
 bucketId: r.bucketId, source: "csv", sourceRef: r.sourceRef, status: "confirmed",
+// A row the user re-bucketed is their own call, not the rule's guess.
+confidence: r.auto && r.bucketId === r.suggestedId ? r.confidence : 1,
 }));
+// Learn from every committed row. Rows the user corrected retrain the rule,
+// since upsertRule takes the bucket that was actually confirmed.
+const rules = ready.reduce((acc, r) => upsertRule(acc, r.description, r.bucketId), loadRules());
+saveRules(rules);
 setTransactions(t => [...t, ...recs]);
 setData(d => {
 const next = { ...d };
@@ -2376,9 +2487,24 @@ const renderDebtInfoModal = () => {
 
 // Log Spend modal
 const renderLogSpend = () => {
-  const wide = logMode === "csv" && csvStep === "review";
+  // The stepper is only meaningful once a file is in play; before that this is
+  // just the log-a-transaction form that happens to accept a CSV.
+  const showSteps = csvRawRows.length > 0;
+  const csvSteps = [["upload", "Upload"], ["map", "Map columns"], ["review", "Review"]];
+  const csvStepIdx = csvSteps.findIndex(s => s[0] === csvStep);
+  // A wrong column map or sign choice is only discoverable on the next step, so
+  // completed steps stay reachable. Forward moves still go through the step's
+  // own Continue button, which is what validates and re-parses.
+  const gotoCsvStep = (target) => {
+    const ti = csvSteps.findIndex(s => s[0] === target);
+    if (ti === -1 || ti >= csvStepIdx) return;
+    setCsvStep(target);
+  };
   const discOpts = buckets.filter(b => DISC_IDS_EDIT.includes(b.id));
   const resOpts = buckets.filter(b => RESERVE_IDS_EDIT.includes(b.id));
+  const mapPreview = csvStep === "map"
+    ? parseCsvRows(csvRawRows, csvMapping, csvOutflow)
+    : { out: [], skipped: 0, dupes: 0, autos: 0, refunds: 0 };
   const readyCount = csvReviewRows.filter(r => r.bucketId).length;
   const colSelect = (field, label) => (
     <div>
@@ -2390,52 +2516,84 @@ const renderLogSpend = () => {
       </select>
     </div>
   );
+  // How many rows share each merchant, so a repeat is visible before the picker
+  // quietly fills in its siblings.
+  const merchantCounts = {};
+  csvReviewRows.forEach(r => {
+    const k = normalizeMerchant(r.description);
+    if (k) merchantCounts[k] = (merchantCounts[k] || 0) + 1;
+  });
+  // Answering for one row answers for every other row from the same merchant
+  // that is still blank. Rows already set by hand are left alone, so a
+  // deliberate one-off never gets overwritten by a later sibling.
+  const setRowBucket = (row, bucketId) => {
+    const key = normalizeMerchant(row.description);
+    setCsvReviewRows(rows => rows.map(x => {
+      if (x.rowId === row.rowId) return { ...x, bucketId: bucketId || null };
+      if (bucketId && !x.bucketId && key && normalizeMerchant(x.description) === key) return { ...x, bucketId };
+      return x;
+    }));
+  };
+  // Whole-file assignment, for the CSV that is one trip or one occasion.
+  // Clearing is the same operation with an empty bucket, which doubles as the
+  // undo for a bulk apply that went the wrong way.
+  const applyBulk = (bucketId) => {
+    setCsvReviewRows(rows => rows.map(r => ({ ...r, bucketId: bucketId === "__clear" ? null : bucketId })));
+  };
+  const txReady = !!txMerchant.trim() && !isNaN(parseFloat(txAmount)) && parseFloat(txAmount) > 0 && !!txReserve;
   const bucketPicker = (row) => (
-    <select value={row.bucketId || ""} onChange={e => setCsvReviewRows(rows => rows.map(x => x.rowId === row.rowId ? { ...x, bucketId: e.target.value || null } : x))}
+    <select value={row.bucketId || ""} onChange={e => setRowBucket(row, e.target.value)}
       style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", minWidth: 0, width: "100%" }}>
       <option value="">Categorize...</option>
       <optgroup label="Discretionary">{discOpts.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</optgroup>
       <optgroup label="Reserves">{resOpts.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</optgroup>
     </select>
   );
+  const csvStepper = (
+    <div style={{ padding: "16px 20px 0", display: "flex", alignItems: "center", flexShrink: 0 }}>
+      {csvSteps.map(([id, label], i) => {
+        const done = i < csvStepIdx;
+        const cur = i === csvStepIdx;
+        const tint = cur ? T.blue : done ? T.green : T.bord;
+        return (
+          <div key={id} style={{ display: "flex", alignItems: "center", flex: i < csvSteps.length - 1 ? 1 : "0 0 auto", minWidth: 0 }}>
+            <div onClick={() => gotoCsvStep(id)} title={done ? "Back to " + label : undefined}
+              style={{ display: "flex", alignItems: "center", gap: "7px", flexShrink: 0, cursor: done ? "pointer" : "default" }}>
+              <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: "1px solid " + tint, background: cur ? T.blue : "transparent", color: cur ? T.bg : tint, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "700", flexShrink: 0 }}>
+                {done ? <span className="material-symbols-outlined" style={{ fontSize: "13px" }}>check</span> : i + 1}
+              </div>
+              <span style={{ fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap", color: cur ? T.text1 : done ? T.text2 : T.text3, fontWeight: cur ? "700" : "400" }}>{label}</span>
+            </div>
+            {i < csvSteps.length - 1 && (
+              <div style={{ flex: 1, height: "1px", minWidth: "12px", margin: "0 10px", background: i < csvStepIdx ? T.green : T.bord }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
   return (
-  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0" }}
-    onClick={e => { if (e.target === e.currentTarget) closeLogSpend(); }}>
-    <div style={{ background: T.surf, borderRadius: "8px", width: "100%", maxWidth: wide ? "760px" : "600px", maxHeight: "85vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
+    onClick={e => { if (e.target === e.currentTarget) closeLogSpend(); }}
+    onDragOver={e => e.preventDefault()}
+    onDrop={e => { e.preventDefault(); if (e.dataTransfer.files[0]) handleCsvFile(e.dataTransfer.files[0]); }}>
+    <div style={{ background: T.surf, borderRadius: "8px", width: "100%", maxWidth: csvStep === "review" ? "1040px" : csvStep === "map" ? "840px" : "640px", maxHeight: "90vh", minHeight: csvStep === "upload" ? "0" : "560px", overflowY: "auto", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-        <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{logMode === "csv" ? "Import Spending (CSV)" : "Log Transaction"}</span>
+        <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{csvStep === "upload" ? "Log Spending" : "Import Spending (CSV)"}</span>
         <button onClick={closeLogSpend} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
           <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>close</span>
         </button>
       </div>
 
-      {(logMode === "manual" || csvStep === "upload") && (
-        <div style={{ padding: "16px 20px 0" }}>
-          <div style={{ background: T.bg, borderRadius: "4px", padding: "3px", display: "flex" }}>
-            {[["manual", "Log one"], ["csv", "Import CSV"]].map(([val, label]) => (
-              <div key={val} onClick={() => { if (val === "csv") { setLogMode("csv"); setCsvStep("upload"); } else { setLogMode("manual"); } }}
-                style={{ flex: 1, padding: "6px 0", textAlign: "center", cursor: "pointer", borderRadius: "4px", fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", background: logMode === val ? T.blue : "transparent", color: logMode === val ? T.bg : T.text2, fontWeight: logMode === val ? "700" : "400", transition: "all 0.15s" }}>
-                {label}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {showSteps && csvStepper}
 
-      {logMode === "manual" && (<>
+      {csvStep === "upload" && (<>
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
         <div>
-          <div style={{ ...cs.lbl, marginBottom: "4px" }}>{txCategory === "reserve" ? "Reserve" : "Discretionary Bucket"}</div>
-          <div style={{ background: T.bg, borderRadius: "4px", padding: "3px", display: "flex", marginBottom: "8px" }}>
-            {[["reserve", "Reserve"], ["discretionary", "Discretionary"]].map(([val, label]) => (
-              <div key={val} onClick={() => setTxCategory(val)}
-                style={{ flex: 1, padding: "6px 0", textAlign: "center", cursor: "pointer", borderRadius: "4px", fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", background: txCategory === val ? T.blue : "transparent", color: txCategory === val ? T.bg : T.text2, fontWeight: txCategory === val ? "700" : "400", transition: "all 0.15s" }}>
-                {label}
-              </div>
-            ))}
-          </div>
+          <div style={{ ...cs.lbl, marginBottom: "4px" }}>Bucket</div>
           <select value={txReserve} onChange={e => setTxReserve(e.target.value)} style={{ ...cs.inp, width: "100%", fontSize: "14px" }}>
-            {(txCategory === "reserve" ? resOpts : discOpts).map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+            <optgroup label="Discretionary">{discOpts.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</optgroup>
+            <optgroup label="Reserves">{resOpts.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</optgroup>
           </select>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: "8px", alignItems: "end" }}>
@@ -2459,41 +2617,56 @@ const renderLogSpend = () => {
               style={{ ...cs.inp, fontSize: "14px", textAlign: "left" }} />
           </div>
         </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
+          <div style={{ flex: 1, height: "1px", background: T.bord }} />
+          <span style={{ fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: T.text3, whiteSpace: "nowrap" }}>or import a batch</span>
+          <div style={{ flex: 1, height: "1px", background: T.bord }} />
+        </div>
+        <label
+          onDragOver={e => { e.preventDefault(); setCsvDragOver(true); }}
+          onDragLeave={() => setCsvDragOver(false)}
+          onDrop={e => { e.preventDefault(); setCsvDragOver(false); if (e.dataTransfer.files[0]) handleCsvFile(e.dataTransfer.files[0]); }}
+          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "6px", padding: "20px", border: `2px dashed ${csvDragOver ? T.blue : T.bord}`, borderRadius: "8px", cursor: "pointer", background: csvDragOver ? T.blue + "11" : T.bg, textAlign: "center" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: "26px", color: T.text3 }}>upload_file</span>
+          <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1 }}>Drop a .csv here or tap to choose</span>
+          <span style={{ fontSize: "11px", color: T.text3, lineHeight: "1.5" }}>Export from your bank or credit card. We read Date, Description and Amount, and ask about any column we cannot guess.</span>
+          <input type="file" accept=".csv,text/csv" style={{ display: "none" }}
+            onChange={e => { if (e.target.files[0]) handleCsvFile(e.target.files[0]); e.target.value = ""; }} />
+        </label>
+        {csvRawRows.length > 0 && (
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div style={{ flex: 1, fontSize: "12px", color: T.text3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {csvFileName} - {csvRawRows.length} row{csvRawRows.length !== 1 ? "s" : ""} loaded
+            </div>
+            <button onClick={() => setCsvStep("map")}
+              style={{ flex: "0 0 auto", background: T.blue, border: "none", color: T.bg, padding: "10px 18px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
+              Continue
+            </button>
+          </div>
+        )}
       </div>
       <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0 }}>
-        <button onClick={addTransaction}
-          style={{ width: "100%", background: T.blue, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
+        <button onClick={addTransaction} disabled={!txReady}
+          style={{ width: "100%", background: txReady ? T.blue : T.bord, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: txReady ? "pointer" : "default", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
           + Add Transaction
         </button>
       </div>
       </>)}
 
-      {logMode === "csv" && csvStep === "upload" && (
-      <div style={{ padding: "16px 20px 20px" }}>
-        <label
-          onDragOver={e => { e.preventDefault(); setCsvDragOver(true); }}
-          onDragLeave={() => setCsvDragOver(false)}
-          onDrop={e => { e.preventDefault(); setCsvDragOver(false); if (e.dataTransfer.files[0]) handleCsvFile(e.dataTransfer.files[0]); }}
-          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "8px", padding: "36px 20px", border: `2px dashed ${csvDragOver ? T.blue : T.bord}`, borderRadius: "8px", cursor: "pointer", background: csvDragOver ? T.blue + "11" : T.bg, textAlign: "center" }}>
-          <span className="material-symbols-outlined" style={{ fontSize: "32px", color: T.text3 }}>upload_file</span>
-          <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1 }}>Drop a .csv here or tap to choose</span>
-          <span style={{ fontSize: "12px", color: T.text3, lineHeight: "1.5" }}>Export transactions from your bank or credit card, then drop the file. We read Date, Description and Amount - you map any columns we cannot guess.</span>
-          <input type="file" accept=".csv,text/csv" style={{ display: "none" }}
-            onChange={e => { if (e.target.files[0]) handleCsvFile(e.target.files[0]); e.target.value = ""; }} />
-        </label>
-      </div>
-      )}
-
-      {logMode === "csv" && csvStep === "map" && (<>
+      {csvStep === "map" && (<>
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "14px" }}>
         <div style={{ fontSize: "12px", color: T.text3 }}>{csvFileName} - map the columns we could not guess.</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
           {colSelect("date", "Date")}
           {colSelect("description", "Description")}
-          {colSelect("amount", "Amount (single column)")}
+          {colSelect("amount", "Amount (one signed column)")}
           <div />
           {colSelect("debit", "Debit / money out (optional)")}
           {colSelect("credit", "Credit / money in (optional)")}
+        </div>
+        <div style={{ fontSize: "11px", color: T.text3, lineHeight: "1.6" }}>
+          Use Amount when one column carries both directions and the sign tells them apart. Use Debit / Credit only when your file has separate columns for money out and money in.
         </div>
         {csvMapping.debit === -1 && (
           <div>
@@ -2515,36 +2688,96 @@ const renderLogSpend = () => {
           </table>
         </div>
       </div>
+      <div style={{ padding: "0 20px 12px", flexShrink: 0 }}>
+        <div style={{ padding: "10px 12px", background: T.bg, borderRadius: "6px" }}>
+          <div style={{ fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: T.text3, marginBottom: "6px" }}>With these columns</div>
+          {mapPreview.out.length === 0
+            ? <div style={{ fontSize: "12px", color: T.red }}>Nothing would import. Check the column choices and which sign means money out.</div>
+            : (<>
+              <div style={{ fontSize: "12px", color: T.text2, marginBottom: "6px" }}>
+                <span style={{ color: T.text1, fontWeight: "700" }}>{mapPreview.out.length}</span> will import
+                {mapPreview.skipped > 0 && <span> - {mapPreview.skipped} skipped as money in or blank</span>}
+                {mapPreview.dupes > 0 && <span> - {mapPreview.dupes} already imported</span>}
+              </div>
+              {mapPreview.out.slice(0, 3).map(r => (
+                <div key={r.rowId} style={{ display: "flex", gap: "10px", fontSize: "11px", color: T.text3, padding: "2px 0" }}>
+                  <span style={{ flex: "0 0 78px" }}>{r.date}</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description || "(no description)"}</span>
+                  <span style={{ flex: "0 0 auto", color: T.text2 }}>{r.amount.toFixed(2)}</span>
+                </div>
+              ))}
+            </>)
+          }
+        </div>
+      </div>
       <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, display: "flex", gap: "10px", flexShrink: 0 }}>
         <button onClick={() => setCsvStep("upload")} style={{ flex: "0 0 auto", background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "12px 16px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Back</button>
         <button disabled={csvMapping.date === -1 || (csvMapping.amount === -1 && csvMapping.debit === -1)}
           onClick={() => { applyMapping(csvRawRows, csvMapping, csvOutflow); setCsvStep("review"); }}
-          style={{ flex: 1, background: (csvMapping.date === -1 || (csvMapping.amount === -1 && csvMapping.debit === -1)) ? T.bord : T.blue, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
+          style={{ flex: "0 0 auto", marginLeft: "auto", minWidth: "170px", background: (csvMapping.date === -1 || (csvMapping.amount === -1 && csvMapping.debit === -1)) ? T.bord : T.blue, border: "none", color: T.bg, padding: "12px 20px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
           Continue
         </button>
       </div>
       </>)}
 
-      {logMode === "csv" && csvStep === "review" && (<>
+      {csvStep === "review" && (<>
       <div style={{ padding: "14px 20px 4px", flexShrink: 0 }}>
         <div style={{ fontSize: "12px", color: T.text2 }}>
           <span style={{ color: T.text1, fontWeight: "700" }}>{csvReviewRows.length}</span> to review
           {csvDupes > 0 && <span> - {csvDupes} duplicate{csvDupes !== 1 ? "s" : ""} skipped</span>}
-          {csvSkipped > 0 && <span> - {csvSkipped} non-spend/blank skipped</span>}
+          {csvRefunds > 0 && <span> - {csvRefunds} credit{csvRefunds !== 1 ? "s" : ""}</span>}
+          {csvSkipped > 0 && <span> - {csvSkipped} blank or unreadable skipped</span>}
         </div>
-        <div style={{ fontSize: "11px", color: T.text3, marginTop: "3px" }}>Assign a bucket to each row you want to keep. Uncategorized rows are discarded when you close.</div>
+        {csvAutos > 0 && (
+          <div style={{ fontSize: "11px", color: T.green, marginTop: "3px" }}>
+            {csvAutos} pre-categorized from merchant memory - change any that look wrong.
+          </div>
+        )}
+        <div style={{ fontSize: "11px", color: T.text3, marginTop: "3px" }}>Categorizing a row also fills any other blank row from the same merchant. Rows left uncategorized are discarded when you close.</div>
+        {csvRefunds > 0 && (
+          <div style={{ fontSize: "11px", color: T.green, marginTop: "3px" }}>
+            Credits are shown negative and reduce whichever bucket you assign them to. Leave money that is not a refund uncategorized.
+          </div>
+        )}
+        {csvReviewRows.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginTop: "10px", padding: "10px 12px", background: T.bg, borderRadius: "6px" }}>
+            <span style={{ fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: T.text3, whiteSpace: "nowrap" }}>Set all rows to</span>
+            <select value="" onChange={e => { if (e.target.value) applyBulk(e.target.value); }}
+              style={{ ...cs.inp, fontSize: "12px", padding: "6px 8px", flex: 1, minWidth: "160px" }}>
+              <option value="">Choose a bucket...</option>
+              <optgroup label="Discretionary">{discOpts.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</optgroup>
+              <optgroup label="Reserves">{resOpts.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}</optgroup>
+              <option value="__clear">-- clear existing entries --</option>
+            </select>
+          </div>
+        )}
       </div>
-      <div style={{ padding: "8px 20px", overflowY: "auto", flex: 1 }}>
+      <div style={{ padding: "8px 0", overflowY: "auto", flex: 1 }}>
         {csvReviewRows.length === 0
-          ? <div style={{ padding: "24px 0", textAlign: "center", fontSize: "12px", color: T.text3 }}>No new spending rows found in this file.</div>
-          : csvReviewRows.map(row => (
-            <div key={row.rowId} style={{ display: "grid", gridTemplateColumns: "78px 1fr 84px 130px 28px", gap: "8px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + T.bord }}>
+          ? <div style={{ padding: "24px 20px", textAlign: "center", fontSize: "12px", color: T.text3, lineHeight: "1.6" }}>
+              No new spending rows found in this file.<br />
+              Go Back to check the column mapping and which sign means money out.
+            </div>
+          : csvReviewRows.map((row, i) => (
+            <div key={row.rowId} style={{ display: "grid", gridTemplateColumns: "78px 1fr 84px 130px 34px 28px", gap: "8px", alignItems: "center", padding: "8px 20px", background: i % 2 === 1 ? T.bg : "transparent" }}>
               <div style={{ fontSize: "11px", color: T.text3 }}>{row.date}</div>
-              <div style={{ fontSize: "12px", color: T.text1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.description || "(no description)"}</div>
+              <div style={{ fontSize: "12px", color: T.text1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {row.description || "(no description)"}
+                {merchantCounts[normalizeMerchant(row.description)] > 1 && (
+                  <span style={{ marginLeft: "6px", fontSize: "10px", color: T.text3 }}>x{merchantCounts[normalizeMerchant(row.description)]}</span>
+                )}
+                {row.amount < 0 && (
+                  <span style={{ marginLeft: "6px", fontSize: "10px", letterSpacing: "0.08em", color: T.green }}>CREDIT</span>
+                )}
+              </div>
               <input type="number" value={row.amount}
                 onChange={e => setCsvReviewRows(rows => rows.map(x => x.rowId === row.rowId ? { ...x, amount: parseFloat(e.target.value) || 0 } : x))}
-                style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", width: "100%", minWidth: 0, textAlign: "right" }} />
+                style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", width: "100%", minWidth: 0, textAlign: "right", color: row.amount < 0 ? T.green : T.text1 }} />
               {bucketPicker(row)}
+              {/* Fixed-width slot so the chip appearing never shifts the picker. */}
+              <div style={{ fontSize: "10px", letterSpacing: "0.08em", textAlign: "center", color: T.green }}>
+                {row.auto && row.bucketId === row.suggestedId ? "auto" : ""}
+              </div>
               <button onClick={() => setCsvReviewRows(rows => rows.filter(x => x.rowId !== row.rowId))}
                 style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>close</span>
@@ -2554,9 +2787,10 @@ const renderLogSpend = () => {
         }
       </div>
       <div style={{ padding: "10px 20px 20px", borderTop: "1px solid " + T.bord, display: "flex", gap: "10px", flexShrink: 0 }}>
+        <button onClick={() => setCsvStep("map")} style={{ flex: "0 0 auto", background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "12px 16px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Back</button>
         <button onClick={closeLogSpend} style={{ flex: "0 0 auto", background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "12px 16px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Cancel</button>
         <button disabled={readyCount === 0} onClick={commitCsv}
-          style={{ flex: 1, background: readyCount === 0 ? T.bord : T.blue, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: readyCount === 0 ? "default" : "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
+          style={{ flex: "0 0 auto", marginLeft: "auto", minWidth: "200px", background: readyCount === 0 ? T.bord : T.blue, border: "none", color: T.bg, padding: "12px 20px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: readyCount === 0 ? "default" : "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
           Import {readyCount} transaction{readyCount !== 1 ? "s" : ""}
         </button>
       </div>
@@ -2960,7 +3194,7 @@ return (
       const discBudget = discBuckets.reduce((s,b) => s+b.amount, 0);
       const discSpent = discIds.reduce((s,id) => s + (cur.spent[id] || 0), 0);
       const discLeft = discBudget - discSpent;
-      const discPct = Math.min(100, discBudget > 0 ? (discSpent / discBudget) * 100 : 0);
+      const discPct = Math.max(0, Math.min(100, discBudget > 0 ? (discSpent / discBudget) * 100 : 0));
       const over = discSpent > discBudget;
 
       const today = new Date();
@@ -3252,7 +3486,7 @@ return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             {discBuckets.map(b => {
               const spent = cur.spent[b.id] || 0;
-              const pct = b.amount > 0 ? Math.min(100, (spent / b.amount) * 100) : 0;
+              const pct = b.amount > 0 ? Math.max(0, Math.min(100, (spent / b.amount) * 100)) : 0;
               const remaining = b.amount - spent;
               const isOver = spent > b.amount;
               return (
@@ -3428,7 +3662,7 @@ return (
                         const spent = cur.spent[b.id] || 0;
                         const over = spent > b.amount;
                         const heightPct = b.amount / discBudget;
-                        const spentPct = Math.min(1, spent / b.amount);
+                        const spentPct = Math.max(0, Math.min(1, spent / b.amount));
                         const h = Math.max(8, Math.round(heightPct * (buckets.length * (barHeight + gap))));
                         return (
                           <div key={b.id} style={{ position: "relative", height: `${h}px`, background: "#2a3a50", borderRadius: "2px", overflow: "hidden" }}>
@@ -3468,7 +3702,7 @@ return (
             const spent = cur.spent[b.id] || 0;
             const rem = b.amount - spent;
             const over = spent > b.amount;
-            const pct = Math.min(100, (spent / b.amount) * 100);
+            const pct = Math.max(0, Math.min(100, (spent / b.amount) * 100));
             const open = expanded === b.id;
             return (
               <div key={b.id} style={{ background: T.surf, border: `1px solid ${over ? T.red : open ? b.color+"55" : T.bord}`, borderRadius: "8px", marginBottom: "10px", overflow: "hidden" }}>
@@ -3504,7 +3738,7 @@ return (
                     <div style={cs.lbl}>Log actual spend</div>
                     <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
                       <input type="number" placeholder={`Budget: ${b.amount}`}
-                        value={inputs[b.id] || (cur.spent[b.id] > 0 ? cur.spent[b.id] : "")}
+                        value={inputs[b.id] || (cur.spent[b.id] ? cur.spent[b.id] : "")}
                         onChange={e => setInputs(p => ({ ...p, [b.id]: e.target.value }))}
                         style={{ ...cs.inp, flex: 1 }} />
                       <Btn color={b.color} onClick={() => { setSpent(b.id, inputs[b.id] || cur.spent[b.id]); setInputs(p => ({ ...p, [b.id]: "" })); }}>Submit</Btn>
