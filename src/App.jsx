@@ -1893,6 +1893,10 @@ const [shotBusy, setShotBusy] = useState(false);
 const [shotError, setShotError] = useState("");
 const cropRef = useRef(null);
 const cropStart = useRef(null);
+// The amount cell shows 2 decimals at rest, but reformatting mid-keystroke
+// would fight the person typing (a trailing "0" would vanish as it was typed),
+// so the raw text is held here while one cell has focus.
+const [amtDraft, setAmtDraft] = useState(null); // { rowId, text } | null
 const [expandedReserve, setExpandedReserve] = useState(null);
 const [search, setSearch] = useState("");
 const [showSearch, setShowSearch] = useState(false);
@@ -3072,8 +3076,13 @@ const renderLogSpend = () => {
                   <span style={{ marginLeft: "6px", fontSize: "10px", letterSpacing: "0.08em", color: T.green }}>CREDIT</span>
                 )}
               </div>
-              <input type="number" value={row.amount}
-                onChange={e => setCsvReviewRows(rows => rows.map(x => x.rowId === row.rowId ? { ...x, amount: parseFloat(e.target.value) || 0 } : x))}
+              <input type="number" step="0.01"
+                value={(amtDraft && amtDraft.rowId === row.rowId) ? amtDraft.text : row.amount.toFixed(2)}
+                onChange={e => {
+                  setAmtDraft({ rowId: row.rowId, text: e.target.value });
+                  setCsvReviewRows(rows => rows.map(x => x.rowId === row.rowId ? { ...x, amount: parseFloat(e.target.value) || 0 } : x));
+                }}
+                onBlur={() => setAmtDraft(null)}
                 style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", width: "100%", minWidth: 0, textAlign: "right", color: row.amount < 0 ? T.green : T.text1 }} />
               {bucketPicker(row)}
               {/* Fixed-width slot so the chip appearing never shifts the picker. */}
