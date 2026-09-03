@@ -93,7 +93,7 @@ export function describeApiError(e) {
   if (status === 401) return "Key rejected. Check that you copied the whole key.";
   if (status === 403) return "This key does not have permission to use the Messages API.";
   if (status === 400 && /credit|balance/i.test(raw)) {
-    return "This key has no credit balance. Add credits in the Anthropic console, then try again.";
+    return "No credit available to this key. Credit is held per workspace, so check that the workspace this key belongs to has a spend limit above zero, not just that the organization has a balance.";
   }
   // An identity-linked key belongs to a person rather than a workspace, so
   // Anthropic cannot tell which workspace to bill. Asking a budgeting app user

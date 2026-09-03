@@ -1894,6 +1894,7 @@ const [keyInput, setKeyInput] = useState("");
 const [keyStatus, setKeyStatus] = useState("idle"); // idle | verifying | error
 const [keyError, setKeyError] = useState("");
 const [agentOpen, setAgentOpen] = useState(false);
+const [keyModalOpen, setKeyModalOpen] = useState(false);
 const [debtInputs, setDebtInputs] = useState({});
 const [projMonthly, setProjectMonthly] = useState({});
 const [showFlowInfo, setShowFlowInfo] = useState(false);
@@ -2372,6 +2373,88 @@ const renderAgentPanel = () => {
           </a>
           <div style={{ fontSize: "12px", color: T.text3, marginTop: "10px", lineHeight: "1.6", textAlign: "center" }}>
             Opens a short survey. Nothing from your budget is sent.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Connect-a-key modal. Settings keeps only the status of the key and the way to
+// remove it; everything a person has to read before pasting a credential lives
+// here, so the warning and the decision are never on separate screens.
+const renderKeyModal = () => {
+  const closeModal = () => { setKeyModalOpen(false); setKeyInput(""); setKeyStatus("idle"); setKeyError(""); };
+  const busy = keyStatus === "verifying";
+  const empty = keyInput.trim().length === 0;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
+      onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div style={{ background: T.surf, borderRadius: "8px 8px 0 0", width: "100%", maxWidth: "600px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.blue }}>vpn_key</span>
+            Connect My AI Assistant
+          </span>
+          <button onClick={closeModal} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>close</span>
+          </button>
+        </div>
+
+        <div style={{ overflowY: "auto", padding: "20px", flex: 1 }}>
+          {/* Stated at the point of decision, not buried. Everything else in this
+              app stays on the device, so the exception has to be explicit. */}
+          <div style={{ background: T.orangeFade, border: "1px solid #FFB34755", borderRadius: "4px", padding: "12px 14px", marginBottom: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+              <span className="material-symbols-outlined" style={{ fontSize: "16px", color: "#FFB347" }}>warning</span>
+              <span style={{ fontSize: "12px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>THIS SENDS YOUR DATA OFF THIS DEVICE</span>
+            </div>
+            <div style={{ fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
+              When you use the assistant, your budget amounts, bucket names, and transaction descriptions are sent to Anthropic to answer your question. Nothing is sent unless you use it. Your key is stored only in this browser and is billed to your own account.
+            </div>
+          </div>
+
+          <div style={{ fontSize: "12px", color: T.text3, marginBottom: "14px", lineHeight: "1.6" }}>
+            An API key is separate from a Claude Pro or Max subscription and is billed separately. Create one at{" "}
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style={{ color: T.blue }}>console.anthropic.com</a>
+            {" "}and add a few dollars of credit. Typical use costs well under $1 a month.
+          </div>
+
+          <div style={{ ...cs.lbl, marginBottom: "8px" }}>Your API key</div>
+          <input
+            type="password"
+            placeholder="sk-ant-..."
+            value={keyInput}
+            onChange={e => { setKeyInput(e.target.value); if (keyStatus === "error") { setKeyStatus("idle"); setKeyError(""); } }}
+            style={{ ...cs.inp, width: "100%", fontSize: "16px", padding: "10px 12px", marginBottom: "10px", boxSizing: "border-box" }}
+          />
+
+          {keyStatus === "error" && (
+            <div style={{ background: T.redFade, border: "1px solid " + T.red + "55", borderRadius: "4px", padding: "10px 12px", marginBottom: "12px", fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
+              {keyError}
+            </div>
+          )}
+
+          <button
+            disabled={busy || empty}
+            onClick={async () => {
+              const k = keyInput.trim();
+              setKeyStatus("verifying"); setKeyError("");
+              const res = await verifyApiKey(k);
+              if (res.ok) {
+                saveApiKey(k); setApiKey(k); setKeyInput(""); setKeyStatus("idle"); setKeyModalOpen(false);
+              } else {
+                setKeyStatus("error"); setKeyError(res.error);
+              }
+            }}
+            style={{ background: T.blue, border: "none", color: T.bg, padding: "12px 16px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: busy ? "wait" : "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", width: "100%", minHeight: "48px", boxSizing: "border-box", opacity: (busy || empty) ? 0.5 : 1 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{busy ? "hourglass_top" : "vpn_key"}</span>
+            {busy ? "Verifying..." : "Connect"}
+          </button>
+
+          <div style={{ fontSize: "12px", color: T.text3, marginTop: "10px", lineHeight: "1.6", textAlign: "center" }}>
+            Connecting makes one tiny test request to check the key works.
           </div>
         </div>
       </div>
@@ -4709,51 +4792,14 @@ return (
         </div>
       ) : (
         <div>
-          {/* Stated at the point of decision, not buried. Everything else in this
-              app stays on the device, so the exception has to be explicit. */}
-          <div style={{ background: T.orangeFade, border: "1px solid #FFB34755", borderRadius: "4px", padding: "12px 14px", marginBottom: "14px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-              <span className="material-symbols-outlined" style={{ fontSize: "16px", color: "#FFB347" }}>warning</span>
-              <span style={{ fontSize: "12px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>THIS SENDS YOUR DATA OFF THIS DEVICE</span>
-            </div>
-            <div style={{ fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
-              When you use the assistant, your budget amounts, bucket names, and transaction descriptions are sent to Anthropic to answer your question. Nothing is sent unless you use it. Your key is stored only in this browser and is billed to your own account.
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", background: T.bg, border: "1px solid " + T.bord, borderRadius: "4px", padding: "10px 12px", marginBottom: "12px" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.text3 }}>key_off</span>
+            <div style={{ fontSize: "12px", color: T.text3 }}>No key connected</div>
           </div>
-
-          <div style={{ fontSize: "12px", color: T.text3, marginBottom: "8px", lineHeight: "1.6" }}>
-            An API key is separate from a Claude Pro or Max subscription and is billed separately. Create one at{" "}
-            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style={{ color: T.blue }}>console.anthropic.com</a>
-            {" "}and add a few dollars of credit. Typical use costs well under $1 a month.
-          </div>
-
-          <input
-            type="password"
-            placeholder="sk-ant-..."
-            value={keyInput}
-            onChange={e => { setKeyInput(e.target.value); if (keyStatus === "error") { setKeyStatus("idle"); setKeyError(""); } }}
-            style={{ ...cs.inp, width: "100%", fontSize: "16px", padding: "10px 12px", marginBottom: "10px", boxSizing: "border-box" }}
-          />
-
-          {keyStatus === "error" && (
-            <div style={{ fontSize: "12px", color: T.red, marginBottom: "10px", lineHeight: "1.5" }}>{keyError}</div>
-          )}
-
-          <button
-            disabled={keyStatus === "verifying" || keyInput.trim().length === 0}
-            onClick={async () => {
-              const k = keyInput.trim();
-              setKeyStatus("verifying"); setKeyError("");
-              const res = await verifyApiKey(k);
-              if (res.ok) {
-                saveApiKey(k); setApiKey(k); setKeyInput(""); setKeyStatus("idle");
-              } else {
-                setKeyStatus("error"); setKeyError(res.error);
-              }
-            }}
-            style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 16px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: keyStatus === "verifying" ? "wait" : "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px", minHeight: "44px", opacity: (keyStatus === "verifying" || keyInput.trim().length === 0) ? 0.5 : 1 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{keyStatus === "verifying" ? "hourglass_top" : "vpn_key"}</span>
-            {keyStatus === "verifying" ? "Verifying..." : "Connect"}
+          <button onClick={() => { setKeyInput(""); setKeyStatus("idle"); setKeyError(""); setKeyModalOpen(true); }}
+            style={{ background: "transparent", border: "1px solid " + T.blue, color: T.blue, padding: "8px 16px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", gap: "6px", minHeight: "44px" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>vpn_key</span>
+            Connect My AI Assistant
           </button>
         </div>
       )}
@@ -4950,6 +4996,7 @@ return (
 {editModal === "debt"      && renderEditDebtModal()}
 {editModal === "income"    && renderEditIncome()}
 {agentOpen                 && renderAgentPanel()}
+{keyModalOpen              && renderKeyModal()}
 {importPreview && <ImportSummaryCard T={T} counts={importPreview.counts} onClose={() => { const p = importPreview.payload; setImportPreview(null); onImportCsv(p); }} />}
   </div>
 </div>
