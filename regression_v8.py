@@ -13,6 +13,8 @@ checks = [
     ('Agent SDK lazy loaded',        'await import("@anthropic-ai/sdk")' in agent),
     ('Agent key never logged',       'console.log' not in agent),
     ('Key verify uses cheap model',  'model: VERIFY_MODEL' in agent),
+    ('Errors stripped of raw JSON',  'function humanMessage' in agent),
+    ('Identity-linked key handled',  'anthropic-workspace-id' in agent),
     ('Key input is type password',   'type="password"' in code),
     ('Agent panel in render tree',   'renderAgentPanel()' in code),
     ('Assistant privacy warning',    'SENDS YOUR DATA OFF THIS DEVICE' in code),

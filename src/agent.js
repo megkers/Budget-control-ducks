@@ -76,14 +76,31 @@ export async function verifyApiKey(key) {
   }
 }
 
+// SDK errors carry the raw JSON response body in .message. That is a debugging
+// artifact, not a sentence, and it must never reach the screen. Pull the human
+// part out of it when there is one.
+function humanMessage(msg) {
+  const m = msg.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) return msg;
+  try { return JSON.parse('"' + m[1] + '"'); } catch (e) { return m[1]; }
+}
+
 // Turn an SDK error into something a budgeting app user can act on.
 export function describeApiError(e) {
   const status = e && e.status;
-  const msg = (e && e.message) || "";
+  const raw = (e && e.message) || "";
+  const msg = humanMessage(raw);
   if (status === 401) return "Key rejected. Check that you copied the whole key.";
   if (status === 403) return "This key does not have permission to use the Messages API.";
-  if (status === 400 && /credit|balance/i.test(msg)) {
+  if (status === 400 && /credit|balance/i.test(raw)) {
     return "This key has no credit balance. Add credits in the Anthropic console, then try again.";
+  }
+  // An identity-linked key belongs to a person rather than a workspace, so
+  // Anthropic cannot tell which workspace to bill. Asking a budgeting app user
+  // for a workspace id would be a terrible question, so point them at the key
+  // type that does not need one.
+  if (/anthropic-workspace-id/i.test(raw)) {
+    return "That key is linked to your identity rather than to a workspace, so Anthropic does not know which workspace to bill. In the Anthropic console, create a key scoped to a workspace and paste that one instead.";
   }
   if (status === 429) return "Rate limited by Anthropic. Wait a moment and try again.";
   if (status >= 500) return "Anthropic had a server error. Try again shortly.";
