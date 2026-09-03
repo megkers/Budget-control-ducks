@@ -2389,9 +2389,9 @@ const renderKeyModal = () => {
   const empty = keyInput.trim().length === 0;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}
       onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
-      <div style={{ background: T.surf, borderRadius: "8px 8px 0 0", width: "100%", maxWidth: "600px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: T.surf, borderRadius: "8px", width: "100%", maxWidth: "600px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: "8px" }}>
             <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.blue }}>vpn_key</span>
