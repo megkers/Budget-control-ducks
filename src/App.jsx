@@ -479,6 +479,13 @@ function resolveFixedDebtLinks(billItems, debts) {
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
+// Where "tell me you want this" goes. The app is static with no server and no
+// analytics, so a click counter would only ever be readable on the device that
+// did the clicking. A survey response is the only interest signal that can
+// actually reach us, and it costs the user their own words rather than a
+// tracking script that could read localStorage.
+const SURVEY_URL = "https://docs.google.com/forms/d/e/1FAIpQLSc71ZobqLMh8TxVX6D_nbEbSuAcIaMuWMurNU_SpLZzmRz8eg/viewform?usp=header";
+
 // Overview card layout switcher. Flip this constant to try alternate arrangements.
 //   "A" - original: single KPI row, full-width discretionary bar below
 //   "B" - Monthly Income + Discretionary Budget Used share a taller row with larger visualizations
@@ -2335,36 +2342,37 @@ const renderAgentPanel = () => {
         </div>
 
         <div style={{ overflowY: "auto", padding: "20px", flex: 1 }}>
-          {apiKey ? (
-            <div>
-              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "6px" }}>Connected and ready</div>
-              <div style={{ fontSize: "12px", color: T.text3, marginBottom: "16px", lineHeight: "1.6" }}>
-                Reading {MONTHS[month]} {year}. The conversation and tools are being built next; this panel is where they will appear.
-              </div>
-              <div style={{ ...cs.lbl, marginBottom: "10px" }}>Things you will be able to ask</div>
-              {examples.map(example)}
-            </div>
-          ) : (
-            <div>
-              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "6px" }}>Ask about your budget</div>
-              <div style={{ fontSize: "12px", color: T.text3, marginBottom: "16px", lineHeight: "1.6" }}>
-                The assistant reads your buckets, bills, and spending so you can ask questions in plain language and get suggested changes you approve before anything is applied.
-              </div>
+          <div style={{ display: "inline-block", background: T.blueBg, border: "1px solid " + T.blueBord, color: T.blue, borderRadius: "4px", padding: "4px 10px", fontSize: "11px", fontWeight: "700", letterSpacing: "0.1em", marginBottom: "14px" }}>
+            COMING SOON
+          </div>
 
-              <div style={{ ...cs.lbl, marginBottom: "10px" }}>For example</div>
-              {examples.map(example)}
+          <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "6px" }}>Ask about your budget</div>
+          <div style={{ fontSize: "12px", color: T.text3, marginBottom: "16px", lineHeight: "1.6" }}>
+            Ask questions in plain language and get suggested changes you approve before anything is applied.
+          </div>
 
-              <div style={{ background: T.orangeFade, border: "1px solid #FFB34755", borderRadius: "4px", padding: "12px 14px", margin: "16px 0", fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
-                This is the one feature that sends your data off this device. It needs your own Anthropic API key, and your budget details go to Anthropic only when you ask something.
-              </div>
+          <div style={{ ...cs.lbl, marginBottom: "10px" }}>For example</div>
+          {examples.map(example)}
 
-              <button onClick={() => { setAgentOpen(false); setTab("settings"); }}
-                style={{ background: T.blue, border: "none", color: T.bg, padding: "12px 16px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", width: "100%", minHeight: "48px" }}>
-                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>settings</span>
-                Set up in Settings
-              </button>
+          {apiKey && (
+            <div style={{ fontSize: "12px", color: T.text3, marginTop: "16px", lineHeight: "1.6" }}>
+              Your key is connected, so this will work as soon as it ships.
             </div>
           )}
+
+          {/* Deliberately not a click counter. The app has no server, so a count
+              would only ever be readable on the device that made it, and the
+              usual fix is a third-party analytics script - which could read the
+              API key out of localStorage. A survey reply is the one interest
+              signal that reaches us without breaking that promise. */}
+          <a href={SURVEY_URL} target="_blank" rel="noopener noreferrer"
+            style={{ background: T.blue, border: "none", color: T.bg, padding: "12px 16px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", fontFamily: "DM Mono, monospace", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", width: "100%", minHeight: "48px", boxSizing: "border-box", textDecoration: "none", marginTop: "20px" }}>
+            Tell me you want this
+            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_forward</span>
+          </a>
+          <div style={{ fontSize: "12px", color: T.text3, marginTop: "10px", lineHeight: "1.6", textAlign: "center" }}>
+            Opens a short survey. Nothing from your budget is sent.
+          </div>
         </div>
       </div>
     </div>
@@ -4678,7 +4686,7 @@ return (
     <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px 18px", marginBottom: "10px" }}>
       <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "4px" }}>AI Assistant</div>
       <div style={{ fontSize: "12px", color: T.text3, marginBottom: "14px", lineHeight: "1.5" }}>
-        Optional. Connect an Anthropic API key to ask questions about your budget and get suggested changes. Budget Control works fully without this.
+        Optional, and coming soon. Connect an Anthropic API key now and the assistant will work the day it ships. Budget Control works fully without this.
       </div>
 
       {apiKey ? (
