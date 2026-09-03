@@ -5,7 +5,12 @@
 // App.jsx owns all UI, this file owns the key, the client, and (later) the
 // tool definitions and the tool loop.
 
+// Models are picked per feature, not shared. The conversation has to reason
+// across every bucket, so it gets the capable model. Verifying a key only needs
+// a round trip that proves the key is real and has credit, so it uses the
+// cheapest one. Screenshot reading will add a third constant here.
 export const AGENT_MODEL = "claude-opus-5";
+export const VERIFY_MODEL = "claude-haiku-4-5";
 
 // ------------
 // API key storage
@@ -61,7 +66,7 @@ export async function verifyApiKey(key) {
   try {
     const client = await getClient(key);
     await client.messages.create({
-      model: AGENT_MODEL,
+      model: VERIFY_MODEL,
       max_tokens: 4,
       messages: [{ role: "user", content: "Reply with OK." }],
     });
