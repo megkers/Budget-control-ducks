@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { sankey as d3Sankey, sankeyLinkHorizontal } from "d3-sankey";
-import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, estimateCents, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE } from "./agent.js";
+import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE } from "./agent.js";
 
 // ------------
 // localStorage helpers
@@ -2774,11 +2774,6 @@ const renderLogSpend = () => {
   // The stepper is only meaningful once a file is in play; before that this is
   // just the log-a-transaction form that happens to accept a CSV.
   const showSteps = csvRawRows.length > 0 || (csvSource === "shot" && !!shotImg);
-  // What this crop will cost to read, shown before the money is spent rather
-  // than after. Derived from the crop, so tightening the box lowers it.
-  const shotCents = shotImg
-    ? estimateCents(Math.round(shotRect.w * shotImg.naturalWidth), Math.round(shotRect.h * shotImg.naturalHeight))
-    : 0;
   // Both capture methods share the outer steps; only the middle one differs.
   const csvSteps = csvSource === "shot"
     ? [["upload", "Upload"], ["crop", "Crop"], ["review", "Review"]]
@@ -2983,7 +2978,7 @@ const renderLogSpend = () => {
       {csvStep === "crop" && shotImg && (<>
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
         <div style={{ fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
-          Only what is inside the box is sent, so leave out your balance, account number and name. Drag the box to move it, drag a corner or edge to resize, or drag on the image outside the box to start a new one.
+          Drag or resize the cropping box to leave out sensitive information.
         </div>
 
         {/* Normalized 0..1 coordinates, converted to pixels only at crop time,
@@ -3074,12 +3069,8 @@ const renderLogSpend = () => {
             hand on a phone is the fiddliest thing in this flow. One tap. */}
         <div style={{ display: "flex", gap: "8px" }}>
           <button onClick={() => { setShotRect({ x: 0, y: 0, w: 1, h: 1 }); setShotPreview(null); }}
-            style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "10px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px" }}>
-            Use whole image
-          </button>
-          <button onClick={() => { setShotRect({ x: 0.02, y: 0.15, w: 0.96, h: 0.8 }); setShotPreview(null); }}
-            style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "10px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px" }}>
-            Skip the header
+            style={{ flex: "0 0 auto", background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "10px 20px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px" }}>
+            No crop
           </button>
         </div>
 
@@ -3089,8 +3080,8 @@ const renderLogSpend = () => {
           </div>
         )}
 
-        <div style={{ fontSize: "11px", color: T.text3, lineHeight: "1.6" }}>
-          Screenshots read best at around {SCREENSHOT_ROW_HINT} rows or fewer. For a whole month, a CSV export is more accurate and costs nothing. Reading this crop costs about {shotCents < 1 ? "less than a cent" : shotCents.toFixed(1) + " cents"}.
+        <div style={{ fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
+          Aim for {SCREENSHOT_ROW_HINT} rows or fewer per screenshot. Use csv export for larger data.
         </div>
       </div>
       <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0, display: "flex", gap: "10px" }}>
