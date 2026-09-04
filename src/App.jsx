@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { sankey as d3Sankey, sankeyLinkHorizontal } from "d3-sankey";
-import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE } from "./agent.js";
+import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, estimateCents, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE } from "./agent.js";
 
 // ------------
 // localStorage helpers
@@ -2774,6 +2774,11 @@ const renderLogSpend = () => {
   // The stepper is only meaningful once a file is in play; before that this is
   // just the log-a-transaction form that happens to accept a CSV.
   const showSteps = csvRawRows.length > 0 || (csvSource === "shot" && !!shotImg);
+  // What this crop will cost to read, said before the money is spent rather
+  // than after. Derived from the crop, so tightening the box lowers it.
+  const shotCents = shotImg
+    ? estimateCents(Math.round(shotRect.w * shotImg.naturalWidth), Math.round(shotRect.h * shotImg.naturalHeight))
+    : 0;
   // Both capture methods share the outer steps; only the middle one differs.
   const csvSteps = csvSource === "shot"
     ? [["upload", "Upload"], ["crop", "Crop"], ["review", "Review"]]
@@ -3084,7 +3089,8 @@ const renderLogSpend = () => {
           Aim for {SCREENSHOT_ROW_HINT} rows or fewer per screenshot. Use csv export for larger data.
         </div>
       </div>
-      <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0, display: "flex", gap: "10px" }}>
+      <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0 }}>
+      <div style={{ display: "flex", gap: "10px" }}>
         <button onClick={() => { setCsvStep("upload"); setCsvSource("csv"); clearShot(); }}
           style={{ flex: "0 0 auto", background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "12px 18px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
           Back
@@ -3093,6 +3099,10 @@ const renderLogSpend = () => {
           style={{ flex: 1, background: shotBusy ? T.bord : T.blue, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: shotBusy ? "wait" : "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
           {shotBusy ? "Reading..." : "Read Transactions"}
         </button>
+      </div>
+      <div style={{ fontSize: "12px", color: T.text3, lineHeight: "1.6", textAlign: "center", marginTop: "10px" }}>
+        Costs about {shotCents < 1 ? "half a cent" : shotCents.toFixed(1) + " cents"} to read.
+      </div>
       </div>
       </>)}
 
