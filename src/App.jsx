@@ -1954,6 +1954,9 @@ const cropStart = useRef(null);
 // would fight the person typing (a trailing "0" would vanish as it was typed),
 // so the raw text is held here while one cell has focus.
 const [amtDraft, setAmtDraft] = useState(null); // { rowId, text } | null
+// Data URL of exactly the pixels an extraction would send. Built from the same
+// function that builds the payload, so it cannot drift from the real thing.
+const [shotPreview, setShotPreview] = useState(null);
 const [expandedReserve, setExpandedReserve] = useState(null);
 const [search, setSearch] = useState("");
 const [showSearch, setShowSearch] = useState(false);
@@ -2216,6 +2219,7 @@ return { out, skipped, dupes, autos, refunds };
 function clearShot() {
 setShotImg(img => { if (img && img.src) { try { URL.revokeObjectURL(img.src); } catch(e) {} } return null; });
 setShotError("");
+setShotPreview(null);
 }
 
 // Load a chosen screenshot and move to the crop step. Nothing is sent yet: the
@@ -2260,7 +2264,7 @@ if (!res.ok) { setShotError(res.error); return; }
 const parsedRows = parseShotRows(res.rows);
 if (parsedRows.out.length === 0) {
 setShotError(parsedRows.dupes > 0
-? "Every row in that image is already in your ledger."
+? "Every row in that crop is already in your ledger."
 : "No transaction rows could be read from that crop. Try selecting just the rows, a bit larger.");
 return;
 }
@@ -2984,6 +2988,7 @@ const renderLogSpend = () => {
 
         {/* Normalized 0..1 coordinates, converted to pixels only at crop time,
             so the selection survives the image being laid out at any width. */}
+        <div style={{ display: "flex", justifyContent: "center" }}>
         <div ref={cropRef}
           onPointerDown={e => {
             const r = cropRef.current.getBoundingClientRect();
@@ -3012,14 +3017,23 @@ const renderLogSpend = () => {
           onPointerUp={() => {
             const wasDraw = cropStart.current && cropStart.current.mode === "draw";
             cropStart.current = null;
+            // A preview of the previous box would be a lie about the new one.
+            setShotPreview(null);
             // A tap on bare image would otherwise leave a zero-size crop and
             // send a one-pixel picture. Only a new-box gesture can do that, so
             // only that one is second-guessed; a small deliberate resize stands.
             if (wasDraw) setShotRect(r => (r.w < 0.05 || r.h < 0.03) ? { x: 0, y: 0, w: 1, h: 1 } : r);
           }}
-          style={{ position: "relative", width: "100%", touchAction: "none", cursor: "crosshair", overflow: "hidden", borderRadius: "6px", background: T.bg, userSelect: "none", maxHeight: "48vh" }}>
+          style={{ position: "relative", display: "inline-block", lineHeight: 0, touchAction: "none", cursor: "crosshair", overflow: "hidden", borderRadius: "6px", background: T.bg, userSelect: "none" }}>
+          {/* The box this sits in must be exactly the rendered image and nothing
+              more. Drag positions are normalized against getBoundingClientRect
+              and then multiplied by the natural dimensions, so any letterboxing
+              between the container and the image silently shifts the crop to a
+              different part of the picture than the one that was outlined. That
+              is why the image is shrink-wrapped here rather than stretched to
+              the container with object-fit. */}
           <img src={shotImg.src} alt="" draggable={false}
-            style={{ display: "block", width: "100%", maxHeight: "48vh", objectFit: "contain", pointerEvents: "none" }} />
+            style={{ display: "block", width: "auto", height: "auto", maxWidth: "100%", maxHeight: "48vh", pointerEvents: "none" }} />
           <div style={{ position: "absolute", left: (shotRect.x * 100) + "%", top: (shotRect.y * 100) + "%", width: (shotRect.w * 100) + "%", height: (shotRect.h * 100) + "%", border: "2px solid " + T.blue, boxShadow: "0 0 0 9999px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
             {/* Drawn, not interactive: the container owns every pointer event
                 and works out what was grabbed. These only say where to grab. */}
@@ -3028,15 +3042,42 @@ const renderLogSpend = () => {
             ))}
           </div>
         </div>
+        </div>
+
+        {/* "Only the crop is sent" is the promise this feature rests on, so it
+            is shown rather than asserted. Deliberately the same call the
+            extraction makes: a preview built any other way could agree with
+            the claim while the payload quietly disagreed. */}
+        <button onClick={() => {
+          if (shotPreview) { setShotPreview(null); return; }
+          const nat = { w: shotImg.naturalWidth, h: shotImg.naturalHeight };
+          const img = cropToBase64(shotImg, {
+            x: Math.round(shotRect.x * nat.w), y: Math.round(shotRect.y * nat.h),
+            w: Math.max(1, Math.round(shotRect.w * nat.w)), h: Math.max(1, Math.round(shotRect.h * nat.h)),
+          });
+          setShotPreview("data:" + img.mediaType + ";base64," + img.data);
+        }}
+          style={{ background: "none", border: "none", color: T.blue, fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", padding: "4px 0", textAlign: "left", display: "flex", alignItems: "center", gap: "4px", minHeight: "44px" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{shotPreview ? "expand_less" : "visibility"}</span>
+          {shotPreview ? "Hide what gets sent" : "See exactly what gets sent"}
+        </button>
+        {shotPreview && (
+          <div style={{ border: "1px solid " + T.bord, borderRadius: "6px", padding: "8px", background: T.bg }}>
+            <img src={shotPreview} alt="" style={{ display: "block", maxWidth: "100%", margin: "0 auto" }} />
+            <div style={{ fontSize: "11px", color: T.text3, marginTop: "8px", lineHeight: "1.5" }}>
+              This is the whole of what leaves your device. Nothing outside it is sent.
+            </div>
+          </div>
+        )}
 
         {/* An already-cropped picture needs no crop, and re-drawing the box by
             hand on a phone is the fiddliest thing in this flow. One tap. */}
         <div style={{ display: "flex", gap: "8px" }}>
-          <button onClick={() => setShotRect({ x: 0, y: 0, w: 1, h: 1 })}
+          <button onClick={() => { setShotRect({ x: 0, y: 0, w: 1, h: 1 }); setShotPreview(null); }}
             style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "10px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px" }}>
             Use whole image
           </button>
-          <button onClick={() => setShotRect({ x: 0.02, y: 0.15, w: 0.96, h: 0.8 })}
+          <button onClick={() => { setShotRect({ x: 0.02, y: 0.15, w: 0.96, h: 0.8 }); setShotPreview(null); }}
             style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "10px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px" }}>
             Skip the header
           </button>

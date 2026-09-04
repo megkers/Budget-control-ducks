@@ -26,6 +26,8 @@ checks = [
     ('No key routes to key modal',  'Requires a Claude workspace API key' in code),
     ('Screenshot reuses row hash',   'parseShotRows' in code),
     ('Low confidence flagged',       'LOW_CONFIDENCE' in code),
+    ('Crop image is shrinkwrapped',  'objectFit: "contain"' not in code),
+    ('Crop preview available',       'See exactly what gets sent' in code),
     ('Object URL released',          'revokeObjectURL' in code),
     ('Key input is type password',   'type="password"' in code),
     ('Agent panel in render tree',   'renderAgentPanel()' in code),
