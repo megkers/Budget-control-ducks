@@ -3073,8 +3073,11 @@ const renderLogSpend = () => {
         {/* An already-cropped picture needs no crop, and re-drawing the box by
             hand on a phone is the fiddliest thing in this flow. One tap. */}
         <div style={{ display: "flex", gap: "8px" }}>
+          {/* The app's secondary button: blue border, blue text, as used by Ask
+              and Connect My AI Assistant. The muted border it had before was a
+              one-off and read as disabled. */}
           <button onClick={() => { setShotRect({ x: 0, y: 0, w: 1, h: 1 }); setShotPreview(null); }}
-            style={{ flex: "0 0 auto", background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "10px 20px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px" }}>
+            style={{ flex: "0 0 auto", background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "10px 20px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", minHeight: "44px" }}>
             No crop
           </button>
         </div>
