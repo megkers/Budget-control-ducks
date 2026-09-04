@@ -2906,6 +2906,15 @@ const renderLogSpend = () => {
           </div>
         </div>
 
+        {/* Sits with the fields it commits rather than in a modal footer. Down
+            there it read as the primary action for the whole sheet, so opening
+            Log Spending to import a file showed a greyed-out button that looked
+            broken but was only waiting on a form nobody was filling in. */}
+        <button onClick={addTransaction} disabled={!txReady}
+          style={{ width: "100%", background: txReady ? T.blue : T.bord, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: txReady ? "pointer" : "default", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", minHeight: "44px" }}>
+          Submit
+        </button>
+
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
           <div style={{ flex: 1, height: "1px", background: T.bord }} />
           <span style={{ fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: T.text3, whiteSpace: "nowrap" }}>or import a batch</span>
@@ -2964,12 +2973,6 @@ const renderLogSpend = () => {
             </button>
           </div>
         )}
-      </div>
-      <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0 }}>
-        <button onClick={addTransaction} disabled={!txReady}
-          style={{ width: "100%", background: txReady ? T.blue : T.bord, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: txReady ? "pointer" : "default", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
-          Submit
-        </button>
       </div>
       </>)}
 
