@@ -2968,7 +2968,7 @@ const renderLogSpend = () => {
       <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0 }}>
         <button onClick={addTransaction} disabled={!txReady}
           style={{ width: "100%", background: txReady ? T.blue : T.bord, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: txReady ? "pointer" : "default", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
-          + Add Transaction
+          Submit
         </button>
       </div>
       </>)}
