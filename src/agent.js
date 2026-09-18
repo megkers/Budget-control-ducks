@@ -115,3 +115,148 @@ export function describeApiError(e) {
   }
   return msg || "Something went wrong.";
 }
+
+// ------------
+// Screenshot import (issue #20)
+// ------------
+// Haiku for now. Reading a handful of rows off a cropped screenshot is closer
+// to OCR than to reasoning, and this is the cheapest model that does it. Swap
+// this one line to trade cost for accuracy; nothing else depends on the choice.
+export const VISION_MODEL = "claude-haiku-4-5";
+
+// Kept next to the model on purpose: these are Haiku's rates, so changing the
+// model above without changing these would quietly make the cost shown to the
+// user a lie. Dollars per million tokens.
+const VISION_RATES = { input: 1.0, output: 5.0 };
+
+// Claude resizes anything larger than this before reading it, so sending more
+// pixels buys nothing and costs tokens. Note that image tokens are computed
+// from dimensions, not file size, which is why the crop below encodes as PNG:
+// it costs exactly what a JPEG of the same size would and keeps small text
+// sharp instead of smearing the digits we are trying to read.
+export const MAX_IMAGE_EDGE = 1568;
+
+// Screenshots work best on a few rows. Above this we still import whatever was
+// read, but say so. Tunable on purpose: calibrate once we have watched where
+// read quality actually falls off, rather than guessing a rule into the UI.
+export const SCREENSHOT_ROW_HINT = 8;
+
+// Below this, a row is shown as needing a second look before it is committed.
+// Rule matches score 0.7 and 0.9, so only the model's own doubt trips this.
+export const LOW_CONFIDENCE = 0.6;
+
+// Turn a crop rectangle over a loaded image into the payload the API takes.
+// Downscaling belongs here rather than in the UI because the ceiling is a
+// property of the API, not of the crop tool.
+export function cropToBase64(img, rect) {
+  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(rect.w, rect.h));
+  const w = Math.max(1, Math.round(rect.w * scale));
+  const h = Math.max(1, Math.round(rect.h * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
+  return { data: canvas.toDataURL("image/png").split(",")[1], mediaType: "image/png", width: w, height: h };
+}
+
+// Roughly what one extraction will cost, so the UI can say so before spending
+// the user's money. Takes the crop at full size and applies the same ceiling
+// cropToBase64 does, so the estimate tracks what will actually be sent rather
+// than what was selected.
+export function estimateCents(width, height) {
+  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
+  const imageTokens = (width * scale * height * scale) / 750;
+  const inTokens = imageTokens + 900;
+  const outTokens = 400;
+  return ((inTokens / 1e6) * VISION_RATES.input + (outTokens / 1e6) * VISION_RATES.output) * 100;
+}
+
+// The model must answer in this shape or not at all, so a bad response fails as
+// a schema error rather than as plausible-looking nonsense in someone's budget.
+const EXTRACT_SCHEMA = {
+  type: "object",
+  properties: {
+    transactions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "Transaction date as YYYY-MM-DD" },
+          amount: { type: "number", description: "Positive for money spent, negative for a refund or credit" },
+          merchant: { type: "string", description: "Merchant or description exactly as printed" },
+          bucketId: { type: ["string", "null"], description: "Best matching bucket id, or null if unsure" },
+          confidence: { type: "number", description: "0 to 1, how legible and certain this row is" },
+        },
+        required: ["date", "amount", "merchant", "bucketId", "confidence"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["transactions"],
+  additionalProperties: false,
+};
+
+// Read a cropped screenshot of a transaction list. One call, one image, bounded
+// output: no loop, no retry, so a screenshot can never cost more than a
+// screenshot. Returns { ok, rows, error } and never throws.
+export async function extractTransactions(key, image, context) {
+  const buckets = (context && context.buckets) || [];
+  const examples = (context && context.examples) || [];
+  const today = (context && context.today) || new Date().toISOString().slice(0, 10);
+
+  const bucketList = buckets.map(b => "- " + b.id + ": " + b.label).join("\n");
+  const exampleList = examples.length
+    ? examples.map(e => "- " + e.description + " -> " + e.bucketId).join("\n")
+    : "(none yet)";
+
+  const system = [
+    "You read transaction rows out of a screenshot of a bank or credit card statement.",
+    "",
+    "Today is " + today + ". Statement rows often omit the year; infer the most recent",
+    "year that does not put the date in the future.",
+    "",
+    "Amounts are positive for money spent and negative for a refund or credit.",
+    "",
+    "Assign each row to one of these buckets, or null when nothing fits:",
+    bucketList,
+    "",
+    "Bucket choices this person has already confirmed, as a guide to their habits:",
+    exampleList,
+    "",
+    "Report a low confidence when a row is blurred, cut off, or ambiguous. Do not",
+    "guess at a digit you cannot read: a wrong amount is worse than a flagged one.",
+    "Only report rows you can actually see. Never invent a row to be helpful.",
+  ].join("\n");
+
+  try {
+    const client = await getClient(key);
+    const res = await client.messages.create({
+      model: VISION_MODEL,
+      max_tokens: 2048,
+      system: system,
+      output_config: { format: { type: "json_schema", schema: EXTRACT_SCHEMA } },
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data } },
+          { type: "text", text: "Read every transaction row in this image." },
+        ],
+      }],
+    });
+
+    const text = (res.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      return { ok: false, rows: [], error: "Could not read that image. Try a tighter crop around just the transaction rows." };
+    }
+    const rows = (parsed && Array.isArray(parsed.transactions)) ? parsed.transactions : [];
+    return { ok: true, rows: rows, error: "" };
+  } catch (e) {
+    return { ok: false, rows: [], error: describeApiError(e) };
+  }
+}

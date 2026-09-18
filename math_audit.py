@@ -442,6 +442,83 @@ def test_payment_equals_interest():
 test_payment_equals_interest()
 
 # ========================================================
+# CROP GEOMETRY (screenshot import)
+#    Normalized 0..1 rects over the displayed image. Ported from the
+#    cropNormalize / cropHit / cropApply helpers in App.jsx: this is the
+#    fiddliest maths in the import path and the easiest to break silently,
+#    because a wrong rect still produces a plausible-looking picture.
+# ========================================================
+print("\n=== Crop Geometry ===")
+
+for fn in ("function cropNormalize", "function cropHit", "function cropApply"):
+    check(f"{fn.split()[1]} still defined", fn in code,
+          "renamed or removed; the port below no longer tests the real thing")
+
+def crop_normalize(r):
+    x = r["x"] + r["w"] if r["w"] < 0 else r["x"]
+    y = r["y"] + r["h"] if r["h"] < 0 else r["y"]
+    w, h = abs(r["w"]), abs(r["h"])
+    if x < 0: w += x; x = 0
+    if y < 0: h += y; y = 0
+    if x + w > 1: w = 1 - x
+    if y + h > 1: h = 1 - y
+    return {"x": x, "y": y, "w": max(0.0, w), "h": max(0.0, h)}
+
+def crop_hit(nx, ny, r, tol_x, tol_y):
+    near_l = abs(nx - r["x"]) <= tol_x
+    near_r = abs(nx - (r["x"] + r["w"])) <= tol_x
+    near_t = abs(ny - r["y"]) <= tol_y
+    near_b = abs(ny - (r["y"] + r["h"])) <= tol_y
+    in_x = r["x"] - tol_x <= nx <= r["x"] + r["w"] + tol_x
+    in_y = r["y"] - tol_y <= ny <= r["y"] + r["h"] + tol_y
+    if near_l and near_t: return "nw"
+    if near_r and near_t: return "ne"
+    if near_l and near_b: return "sw"
+    if near_r and near_b: return "se"
+    if near_l and in_y: return "w"
+    if near_r and in_y: return "e"
+    if near_t and in_x: return "n"
+    if near_b and in_x: return "s"
+    if r["x"] < nx < r["x"] + r["w"] and r["y"] < ny < r["y"] + r["h"]: return "move"
+    return "draw"
+
+def crop_apply(mode, r0, dx, dy):
+    if mode == "move":
+        return {"x": min(1 - r0["w"], max(0, r0["x"] + dx)),
+                "y": min(1 - r0["h"], max(0, r0["y"] + dy)),
+                "w": r0["w"], "h": r0["h"]}
+    x, y, w, h = r0["x"], r0["y"], r0["w"], r0["h"]
+    if "w" in mode: x = r0["x"] + dx; w = r0["w"] - dx
+    if "e" in mode: w = r0["w"] + dx
+    if "n" in mode: y = r0["y"] + dy; h = r0["h"] - dy
+    if "s" in mode: h = r0["h"] + dy
+    return crop_normalize({"x": x, "y": y, "w": w, "h": h})
+
+def near(a, b):
+    return all(abs(a[k] - b[k]) < 1e-9 for k in b)
+
+R = {"x": 0.2, "y": 0.2, "w": 0.6, "h": 0.6}
+
+check("Backwards drag flips to a real rect",
+      near(crop_normalize({"x": 0.8, "y": 0.8, "w": -0.3, "h": -0.3}), {"x": 0.5, "y": 0.5, "w": 0.3, "h": 0.3}))
+check("Crop clamped inside the image",
+      near(crop_normalize({"x": 0.8, "y": 0, "w": 0.5, "h": 0.5}), {"x": 0.8, "y": 0, "w": 0.2, "h": 0.5}))
+check("Corner press resizes, not moves", crop_hit(0.2, 0.2, R, 0.03, 0.03) == "nw")
+check("Edge press resizes that edge", crop_hit(0.2, 0.5, R, 0.03, 0.03) == "w")
+check("Interior press moves the box", crop_hit(0.5, 0.5, R, 0.03, 0.03) == "move")
+check("Press outside starts a new box", crop_hit(0.05, 0.05, R, 0.03, 0.03) == "draw")
+check("Move keeps the box the same size",
+      near(crop_apply("move", R, 0.1, 0.1), {"x": 0.3, "y": 0.3, "w": 0.6, "h": 0.6}))
+check("Move stops at the image edge",
+      near(crop_apply("move", R, 0.9, 0.9), {"x": 0.4, "y": 0.4, "w": 0.6, "h": 0.6}))
+check("Corner drag resizes both axes",
+      near(crop_apply("se", R, 0.1, 0.1), {"x": 0.2, "y": 0.2, "w": 0.7, "h": 0.7}))
+check("Single edge drag leaves the other axis alone",
+      near(crop_apply("w", R, 0.1, 0.5), {"x": 0.3, "y": 0.2, "w": 0.5, "h": 0.6}))
+check("Dragging an edge past its opposite stays valid",
+      near(crop_apply("e", R, -0.8, 0), {"x": 0, "y": 0.2, "w": 0.2, "h": 0.6}))
+
+# ========================================================
 # SUMMARY
 # ========================================================
 print(f"\n{'='*50}")

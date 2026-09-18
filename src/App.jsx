@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { sankey as d3Sankey, sankeyLinkHorizontal } from "d3-sankey";
-import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey } from "./agent.js";
+import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, estimateCents, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE } from "./agent.js";
 
 // ------------
 // localStorage helpers
@@ -475,6 +475,63 @@ function resolveFixedDebtLinks(billItems, debts) {
       ? { ...d, linkedBucketId: nameToId[d.linkedBucketId] }
       : d
   ));
+}
+
+// ------------
+// Crop geometry (screenshot import)
+// ------------
+// Pure and module level so the drag maths can be tested without a browser.
+// All rects are normalized 0..1 against the displayed image.
+
+// Keep a rect the right way round and inside the image. Dragging a corner past
+// its opposite side is normal behaviour, not an error, so a negative width is
+// flipped rather than rejected.
+function cropNormalize(r) {
+  var x = r.w < 0 ? r.x + r.w : r.x;
+  var y = r.h < 0 ? r.y + r.h : r.y;
+  var w = Math.abs(r.w), h = Math.abs(r.h);
+  if (x < 0) { w += x; x = 0; }
+  if (y < 0) { h += y; y = 0; }
+  if (x + w > 1) w = 1 - x;
+  if (y + h > 1) h = 1 - y;
+  return { x: x, y: y, w: Math.max(0, w), h: Math.max(0, h) };
+}
+
+// What a press at (nx, ny) should do. Corners and edges win over the interior
+// so a finger landing near an edge resizes rather than dragging the whole box.
+// tol is in normalized units, sized by the caller from a real touch target.
+function cropHit(nx, ny, r, tolX, tolY) {
+  var nearL = Math.abs(nx - r.x) <= tolX;
+  var nearR = Math.abs(nx - (r.x + r.w)) <= tolX;
+  var nearT = Math.abs(ny - r.y) <= tolY;
+  var nearB = Math.abs(ny - (r.y + r.h)) <= tolY;
+  var inX = nx >= r.x - tolX && nx <= r.x + r.w + tolX;
+  var inY = ny >= r.y - tolY && ny <= r.y + r.h + tolY;
+  if (nearL && nearT) return "nw";
+  if (nearR && nearT) return "ne";
+  if (nearL && nearB) return "sw";
+  if (nearR && nearB) return "se";
+  if (nearL && inY) return "w";
+  if (nearR && inY) return "e";
+  if (nearT && inX) return "n";
+  if (nearB && inX) return "s";
+  if (nx > r.x && nx < r.x + r.w && ny > r.y && ny < r.y + r.h) return "move";
+  return "draw";
+}
+
+// Apply a drag of (dx, dy) to the rect the press started on.
+function cropApply(mode, r0, dx, dy) {
+  if (mode === "move") {
+    var mx = Math.min(1 - r0.w, Math.max(0, r0.x + dx));
+    var my = Math.min(1 - r0.h, Math.max(0, r0.y + dy));
+    return { x: mx, y: my, w: r0.w, h: r0.h };
+  }
+  var x = r0.x, y = r0.y, w = r0.w, h = r0.h;
+  if (mode.indexOf("w") !== -1) { x = r0.x + dx; w = r0.w - dx; }
+  if (mode.indexOf("e") !== -1) { w = r0.w + dx; }
+  if (mode.indexOf("n") !== -1) { y = r0.y + dy; h = r0.h - dy; }
+  if (mode.indexOf("s") !== -1) { h = r0.h + dy; }
+  return cropNormalize({ x: x, y: y, w: w, h: h });
 }
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -1882,6 +1939,24 @@ const [csvDupes, setCsvDupes] = useState(0);
 const [csvAutos, setCsvAutos] = useState(0); // rows pre-categorized by merchant memory
 const [csvRefunds, setCsvRefunds] = useState(0);
 const [csvDragOver, setCsvDragOver] = useState(false);
+// Screenshot import. csvSource says which capture method is driving the shared
+// steps, so the stepper and the middle step can differ without forking the
+// modal. The crop rect is normalized 0..1 so it survives the image being
+// displayed at whatever width the window allows.
+const [csvSource, setCsvSource] = useState("csv"); // "csv" | "shot"
+const [shotImg, setShotImg] = useState(null);
+const [shotRect, setShotRect] = useState({ x: 0.02, y: 0.15, w: 0.96, h: 0.8 });
+const [shotBusy, setShotBusy] = useState(false);
+const [shotError, setShotError] = useState("");
+const cropRef = useRef(null);
+const cropStart = useRef(null);
+// The amount cell shows 2 decimals at rest, but reformatting mid-keystroke
+// would fight the person typing (a trailing "0" would vanish as it was typed),
+// so the raw text is held here while one cell has focus.
+const [amtDraft, setAmtDraft] = useState(null); // { rowId, text } | null
+// Data URL of exactly the pixels an extraction would send. Built from the same
+// function that builds the payload, so it cannot drift from the real thing.
+const [shotPreview, setShotPreview] = useState(null);
 const [expandedReserve, setExpandedReserve] = useState(null);
 const [search, setSearch] = useState("");
 const [showSearch, setShowSearch] = useState(false);
@@ -1995,6 +2070,9 @@ setCsvDupes(0);
 setCsvAutos(0);
 setCsvRefunds(0);
 setCsvDragOver(false);
+setCsvSource("csv");
+clearShot();
+setShotBusy(false);
 }
 function closeLogSpend() { resetCsv(); setEditModal(null); }
 
@@ -2081,6 +2159,121 @@ confidence: hit ? hit.confidence : null,
 });
 });
 return { out, skipped, dupes, autos, refunds };
+}
+
+// Turn what the model read out of a screenshot into the same rows CSV import
+// produces, so both capture methods land on the one review screen and commit
+// through the same path.
+//
+// Note this reuses csvRowHash deliberately. The hash covers date, amount and
+// merchant with no mention of where the row came from, so a screenshot of a
+// transaction already imported from a CSV hashes identically and is caught as
+// a duplicate. That cross-source catch is the whole point, so the "csv_" prefix
+// stays even though the name now undersells it.
+function parseShotRows(rows) {
+const existingRefs = {};
+transactions.forEach(t => { if (t.sourceRef) existingRefs[t.sourceRef] = true; });
+const rules = loadRules();
+const validBucket = {};
+buckets.forEach(b => { if (DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id)) validBucket[b.id] = true; });
+const seenThisImport = {};
+let skipped = 0, dupes = 0, autos = 0, refunds = 0;
+const out = [];
+rows.forEach(r => {
+const date = csvParseDate(r && r.date);
+const rawAmt = r && r.amount;
+const amount = (typeof rawAmt === "number" && isFinite(rawAmt) && rawAmt !== 0) ? rawAmt : null;
+const description = String((r && r.merchant) || "").trim();
+if (date == null || amount == null) { skipped++; return; }
+if (amount < 0) refunds++;
+const ref = csvRowHash(date, amount, description);
+if (existingRefs[ref] || seenThisImport[ref]) { dupes++; return; }
+seenThisImport[ref] = true;
+// A learned rule outranks the model. It is this person's own past decision
+// about this exact merchant, it costs nothing to consult, and it keeps the
+// two categorization paths from disagreeing about the same shop.
+let bucketId = null, confidence = null;
+const hit = matchRule(rules, description);
+if (hit && validBucket[hit.bucketId]) {
+bucketId = hit.bucketId;
+confidence = hit.confidence;
+} else if (r.bucketId && validBucket[r.bucketId]) {
+bucketId = r.bucketId;
+confidence = (typeof r.confidence === "number") ? r.confidence : null;
+}
+if (bucketId) autos++;
+out.push({
+rowId: newTxnId(), date, amount, description, sourceRef: ref,
+bucketId,
+auto: !!bucketId,
+suggestedId: bucketId,
+confidence,
+});
+});
+return { out, skipped, dupes, autos, refunds };
+}
+
+// Releasing the decoded screenshot is easy to forget at a call site, so it
+// lives in one place. The crop step renders straight from the object URL, so
+// the URL can only be revoked once the flow is finished with the image.
+function clearShot() {
+setShotImg(img => { if (img && img.src) { try { URL.revokeObjectURL(img.src); } catch(e) {} } return null; });
+setShotError("");
+setShotPreview(null);
+}
+
+// Load a chosen screenshot and move to the crop step. Nothing is sent yet: the
+// file is only decoded locally so the user can draw a box around the rows.
+function handleScreenshotFile(file) {
+setShotError("");
+const url = URL.createObjectURL(file);
+const img = new Image();
+img.onload = () => {
+setShotImg(img);
+setShotRect({ x: 0.02, y: 0.15, w: 0.96, h: 0.8 });
+setCsvSource("shot");
+setCsvStep("crop");
+};
+img.onerror = () => { URL.revokeObjectURL(url); setShotError("That file could not be opened as an image."); };
+img.src = url;
+}
+
+// Crop, downscale, and read. One call, no retry: a screenshot can never cost
+// more than a screenshot.
+async function runScreenshotExtract() {
+if (!shotImg) return;
+setShotBusy(true); setShotError("");
+const nat = { w: shotImg.naturalWidth, h: shotImg.naturalHeight };
+const rect = {
+x: Math.round(shotRect.x * nat.w),
+y: Math.round(shotRect.y * nat.h),
+w: Math.max(1, Math.round(shotRect.w * nat.w)),
+h: Math.max(1, Math.round(shotRect.h * nat.h)),
+};
+const image = cropToBase64(shotImg, rect);
+const recent = transactions.filter(t => t.description && t.bucketId).slice(-20)
+.map(t => ({ description: t.description, bucketId: t.bucketId }));
+const res = await extractTransactions(apiKey, image, {
+buckets: buckets.filter(b => DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id))
+.map(b => ({ id: b.id, label: b.label })),
+examples: recent,
+today: new Date().toISOString().slice(0, 10),
+});
+setShotBusy(false);
+if (!res.ok) { setShotError(res.error); return; }
+const parsedRows = parseShotRows(res.rows);
+if (parsedRows.out.length === 0) {
+setShotError(parsedRows.dupes > 0
+? "Every row in that crop is already in your ledger."
+: "No transaction rows could be read from that crop. Try selecting just the rows, a bit larger.");
+return;
+}
+setCsvReviewRows(parsedRows.out);
+setCsvSkipped(parsedRows.skipped);
+setCsvDupes(parsedRows.dupes);
+setCsvAutos(parsedRows.autos);
+setCsvRefunds(parsedRows.refunds);
+setCsvStep("review");
 }
 
 function applyMapping(rawRows, mapping, outflow) {
@@ -2580,8 +2773,16 @@ const renderDebtInfoModal = () => {
 const renderLogSpend = () => {
   // The stepper is only meaningful once a file is in play; before that this is
   // just the log-a-transaction form that happens to accept a CSV.
-  const showSteps = csvRawRows.length > 0;
-  const csvSteps = [["upload", "Upload"], ["map", "Map columns"], ["review", "Review"]];
+  const showSteps = csvRawRows.length > 0 || (csvSource === "shot" && !!shotImg);
+  // What this crop will cost to read, said before the money is spent rather
+  // than after. Derived from the crop, so tightening the box lowers it.
+  const shotCents = shotImg
+    ? estimateCents(Math.round(shotRect.w * shotImg.naturalWidth), Math.round(shotRect.h * shotImg.naturalHeight))
+    : 0;
+  // Both capture methods share the outer steps; only the middle one differs.
+  const csvSteps = csvSource === "shot"
+    ? [["upload", "Upload"], ["crop", "Crop"], ["review", "Review"]]
+    : [["upload", "Upload"], ["map", "Map columns"], ["review", "Review"]];
   const csvStepIdx = csvSteps.findIndex(s => s[0] === csvStep);
   // A wrong column map or sign choice is only discoverable on the next step, so
   // completed steps stay reachable. Forward moves still go through the step's
@@ -2668,9 +2869,9 @@ const renderLogSpend = () => {
     onClick={e => { if (e.target === e.currentTarget) closeLogSpend(); }}
     onDragOver={e => e.preventDefault()}
     onDrop={e => { e.preventDefault(); if (e.dataTransfer.files[0]) handleCsvFile(e.dataTransfer.files[0]); }}>
-    <div style={{ background: T.surf, borderRadius: "8px", width: "100%", maxWidth: csvStep === "review" ? "1040px" : csvStep === "map" ? "840px" : "640px", maxHeight: "90vh", minHeight: csvStep === "upload" ? "0" : "560px", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+    <div style={{ background: T.surf, borderRadius: "8px", width: "100%", maxWidth: csvStep === "review" ? "1040px" : (csvStep === "map" || csvStep === "crop") ? "840px" : "640px", maxHeight: "90vh", minHeight: csvStep === "upload" ? "0" : "560px", overflowY: "auto", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid " + T.bord, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-        <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{csvStep === "upload" ? "Log Spending" : "Import Spending (CSV)"}</span>
+        <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1, letterSpacing: "0.05em" }}>{csvStep === "upload" ? "Log Spending" : csvSource === "shot" ? "Import Spending (Screenshot)" : "Import Spending (CSV)"}</span>
         <button onClick={closeLogSpend} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", display: "flex", alignItems: "center" }}>
           <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>close</span>
         </button>
@@ -2709,6 +2910,15 @@ const renderLogSpend = () => {
           </div>
         </div>
 
+        {/* Sits with the fields it commits rather than in a modal footer. Down
+            there it read as the primary action for the whole sheet, so opening
+            Log Spending to import a file showed a greyed-out button that looked
+            broken but was only waiting on a form nobody was filling in. */}
+        <button onClick={addTransaction} disabled={!txReady}
+          style={{ width: "100%", background: txReady ? T.blue : T.bord, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: txReady ? "pointer" : "default", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", minHeight: "44px" }}>
+          Submit
+        </button>
+
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
           <div style={{ flex: 1, height: "1px", background: T.bord }} />
           <span style={{ fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: T.text3, whiteSpace: "nowrap" }}>or import a batch</span>
@@ -2725,6 +2935,37 @@ const renderLogSpend = () => {
           <input type="file" accept=".csv,text/csv" style={{ display: "none" }}
             onChange={e => { if (e.target.files[0]) handleCsvFile(e.target.files[0]); e.target.value = ""; }} />
         </label>
+        {/* Screenshot capture. Shown whether or not a key is connected: hiding
+            it meant nobody discovered the feature, and the version without a
+            key has somewhere useful to go. With a key this is a plain file
+            input, which gives us the OS sheet (Photo Library / Take Photo /
+            Files) for free on a phone. Without one it opens the key modal, so
+            the requirement and the way to satisfy it are the same tap. */}
+        {apiKey ? (
+          <label style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 16px", border: "1px solid " + T.bord, borderRadius: "8px", cursor: "pointer", background: T.bg }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "22px", color: T.blue }}>photo_camera</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1 }}>Read a screenshot</div>
+              <div style={{ fontSize: "11px", color: T.text3, lineHeight: "1.5" }}>
+                Best for a few recent rows. You crop it first, so only the rows you select leave your device.
+              </div>
+            </div>
+            <input type="file" accept="image/*" style={{ display: "none" }}
+              onChange={e => { if (e.target.files[0]) handleScreenshotFile(e.target.files[0]); e.target.value = ""; }} />
+          </label>
+        ) : (
+          <button onClick={() => { setKeyInput(""); setKeyStatus("idle"); setKeyError(""); setKeyModalOpen(true); }}
+            style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 16px", border: "1px solid " + T.bord, borderRadius: "8px", cursor: "pointer", background: T.bg, width: "100%", textAlign: "left", fontFamily: "DM Mono, monospace" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "22px", color: T.text3 }}>photo_camera</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1 }}>Read a screenshot</div>
+              <div style={{ fontSize: "11px", color: T.text3, lineHeight: "1.5" }}>
+                Requires a Claude workspace API key. Tap to connect one.
+              </div>
+            </div>
+            <span className="material-symbols-outlined" style={{ fontSize: "18px", color: T.text3 }}>chevron_right</span>
+          </button>
+        )}
         {csvRawRows.length > 0 && (
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
             <div style={{ flex: 1, fontSize: "12px", color: T.text3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -2737,11 +2978,134 @@ const renderLogSpend = () => {
           </div>
         )}
       </div>
-      <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0 }}>
-        <button onClick={addTransaction} disabled={!txReady}
-          style={{ width: "100%", background: txReady ? T.blue : T.bord, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: txReady ? "pointer" : "default", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
-          + Add Transaction
+      </>)}
+
+      {csvStep === "crop" && shotImg && (<>
+      <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div style={{ fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
+          Drag or resize the cropping box to leave out sensitive information.
+        </div>
+
+        {/* Normalized 0..1 coordinates, converted to pixels only at crop time,
+            so the selection survives the image being laid out at any width. */}
+        <div style={{ display: "flex", justifyContent: "center" }}>
+        <div ref={cropRef}
+          onPointerDown={e => {
+            const r = cropRef.current.getBoundingClientRect();
+            const nx = (e.clientX - r.left) / r.width;
+            const ny = (e.clientY - r.top) / r.height;
+            // A finger is about 44px wide, so the grab zone is sized in real
+            // pixels and converted, rather than being a normalized guess that
+            // would shrink on a large image and grow on a small one.
+            const mode = cropHit(nx, ny, shotRect, 22 / r.width, 22 / r.height);
+            cropStart.current = { mode, nx, ny, rect0: shotRect };
+            e.currentTarget.setPointerCapture(e.pointerId);
+            if (mode === "draw") setShotRect({ x: nx, y: ny, w: 0, h: 0 });
+          }}
+          onPointerMove={e => {
+            const c = cropStart.current;
+            if (!c) return;
+            const r = cropRef.current.getBoundingClientRect();
+            const nx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+            const ny = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+            if (c.mode === "draw") {
+              setShotRect(cropNormalize({ x: c.nx, y: c.ny, w: nx - c.nx, h: ny - c.ny }));
+            } else {
+              setShotRect(cropApply(c.mode, c.rect0, nx - c.nx, ny - c.ny));
+            }
+          }}
+          onPointerUp={() => {
+            const wasDraw = cropStart.current && cropStart.current.mode === "draw";
+            cropStart.current = null;
+            // A preview of the previous box would be a lie about the new one.
+            setShotPreview(null);
+            // A tap on bare image would otherwise leave a zero-size crop and
+            // send a one-pixel picture. Only a new-box gesture can do that, so
+            // only that one is second-guessed; a small deliberate resize stands.
+            if (wasDraw) setShotRect(r => (r.w < 0.05 || r.h < 0.03) ? { x: 0, y: 0, w: 1, h: 1 } : r);
+          }}
+          style={{ position: "relative", display: "inline-block", lineHeight: 0, touchAction: "none", cursor: "crosshair", overflow: "hidden", borderRadius: "6px", background: T.bg, userSelect: "none" }}>
+          {/* The box this sits in must be exactly the rendered image and nothing
+              more. Drag positions are normalized against getBoundingClientRect
+              and then multiplied by the natural dimensions, so any letterboxing
+              between the container and the image silently shifts the crop to a
+              different part of the picture than the one that was outlined. That
+              is why the image is shrink-wrapped here rather than stretched to
+              the container with object-fit. */}
+          <img src={shotImg.src} alt="" draggable={false}
+            style={{ display: "block", width: "auto", height: "auto", maxWidth: "100%", maxHeight: "48vh", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", left: (shotRect.x * 100) + "%", top: (shotRect.y * 100) + "%", width: (shotRect.w * 100) + "%", height: (shotRect.h * 100) + "%", border: "2px solid " + T.blue, boxShadow: "0 0 0 9999px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
+            {/* Drawn, not interactive: the container owns every pointer event
+                and works out what was grabbed. These only say where to grab. */}
+            {[["nw", 0, 0], ["ne", 1, 0], ["sw", 0, 1], ["se", 1, 1]].map(([id, hx, hy]) => (
+              <div key={id} style={{ position: "absolute", left: (hx * 100) + "%", top: (hy * 100) + "%", width: "16px", height: "16px", marginLeft: "-8px", marginTop: "-8px", background: T.blue, border: "2px solid " + T.bg, borderRadius: "3px" }} />
+            ))}
+          </div>
+        </div>
+        </div>
+
+        {/* "Only the crop is sent" is the promise this feature rests on, so it
+            is shown rather than asserted. Deliberately the same call the
+            extraction makes: a preview built any other way could agree with
+            the claim while the payload quietly disagreed. */}
+        <button onClick={() => {
+          if (shotPreview) { setShotPreview(null); return; }
+          const nat = { w: shotImg.naturalWidth, h: shotImg.naturalHeight };
+          const img = cropToBase64(shotImg, {
+            x: Math.round(shotRect.x * nat.w), y: Math.round(shotRect.y * nat.h),
+            w: Math.max(1, Math.round(shotRect.w * nat.w)), h: Math.max(1, Math.round(shotRect.h * nat.h)),
+          });
+          setShotPreview("data:" + img.mediaType + ";base64," + img.data);
+        }}
+          style={{ background: "none", border: "none", color: T.blue, fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", padding: "4px 0", textAlign: "left", display: "flex", alignItems: "center", gap: "4px", minHeight: "44px" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{shotPreview ? "expand_less" : "visibility"}</span>
+          {shotPreview ? "Hide what gets sent" : "See exactly what gets sent"}
         </button>
+        {shotPreview && (
+          <div style={{ border: "1px solid " + T.bord, borderRadius: "6px", padding: "8px", background: T.bg }}>
+            <img src={shotPreview} alt="" style={{ display: "block", maxWidth: "100%", margin: "0 auto" }} />
+            <div style={{ fontSize: "11px", color: T.text3, marginTop: "8px", lineHeight: "1.5" }}>
+              This is the whole of what leaves your device. Nothing outside it is sent.
+            </div>
+          </div>
+        )}
+
+        {/* An already-cropped picture needs no crop, and re-drawing the box by
+            hand on a phone is the fiddliest thing in this flow. One tap. */}
+        <div style={{ display: "flex", gap: "8px" }}>
+          {/* The app's secondary button: blue border, blue text, as used by Ask
+              and Connect My AI Assistant. The muted border it had before was a
+              one-off and read as disabled. */}
+          <button onClick={() => { setShotRect({ x: 0, y: 0, w: 1, h: 1 }); setShotPreview(null); }}
+            style={{ flex: "0 0 auto", background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "10px 20px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", minHeight: "44px" }}>
+            No crop
+          </button>
+        </div>
+
+        {shotError && (
+          <div style={{ background: T.redFade, border: "1px solid " + T.red + "55", borderRadius: "4px", padding: "10px 12px", fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
+            {shotError}
+          </div>
+        )}
+
+        <div style={{ fontSize: "12px", color: T.text2, lineHeight: "1.6" }}>
+          Aim for {SCREENSHOT_ROW_HINT} rows or fewer per screenshot. Use csv export for larger data.
+        </div>
+      </div>
+      <div style={{ padding: "4px 20px 20px", borderTop: "1px solid " + T.bord, flexShrink: 0 }}>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <button onClick={() => { setCsvStep("upload"); setCsvSource("csv"); clearShot(); }}
+          style={{ flex: "0 0 auto", background: "transparent", border: "1px solid " + T.bord, color: T.text2, padding: "12px 18px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
+          Back
+        </button>
+        <button onClick={runScreenshotExtract} disabled={shotBusy}
+          style={{ flex: 1, background: shotBusy ? T.bord : T.blue, border: "none", color: T.bg, padding: "12px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: shotBusy ? "wait" : "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em" }}>
+          {shotBusy ? "Reading..." : "Read Transactions"}
+        </button>
+      </div>
+      <div style={{ fontSize: "12px", color: T.text3, lineHeight: "1.6", textAlign: "center", marginTop: "10px" }}>
+        Costs about {shotCents < 1 ? "half a cent" : shotCents.toFixed(1) + " cents"} to read.
+      </div>
       </div>
       </>)}
 
@@ -2861,13 +3225,22 @@ const renderLogSpend = () => {
                   <span style={{ marginLeft: "6px", fontSize: "10px", letterSpacing: "0.08em", color: T.green }}>CREDIT</span>
                 )}
               </div>
-              <input type="number" value={row.amount}
-                onChange={e => setCsvReviewRows(rows => rows.map(x => x.rowId === row.rowId ? { ...x, amount: parseFloat(e.target.value) || 0 } : x))}
+              <input type="number" step="0.01"
+                value={(amtDraft && amtDraft.rowId === row.rowId) ? amtDraft.text : row.amount.toFixed(2)}
+                onChange={e => {
+                  setAmtDraft({ rowId: row.rowId, text: e.target.value });
+                  setCsvReviewRows(rows => rows.map(x => x.rowId === row.rowId ? { ...x, amount: parseFloat(e.target.value) || 0 } : x));
+                }}
+                onBlur={() => setAmtDraft(null)}
                 style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", width: "100%", minWidth: 0, textAlign: "right", color: row.amount < 0 ? T.green : T.text1 }} />
               {bucketPicker(row)}
               {/* Fixed-width slot so the chip appearing never shifts the picker. */}
-              <div style={{ fontSize: "10px", letterSpacing: "0.08em", textAlign: "center", color: T.green }}>
-                {row.auto && row.bucketId === row.suggestedId ? "auto" : ""}
+              {/* A row the model was unsure of outranks the auto chip here: the
+                  point of the slot is to say which rows still need a human. */}
+              <div style={{ fontSize: "10px", letterSpacing: "0.08em", textAlign: "center", color: (row.confidence != null && row.confidence < LOW_CONFIDENCE) ? "#FFB347" : T.green }}>
+                {(row.confidence != null && row.confidence < LOW_CONFIDENCE)
+                  ? "check"
+                  : (row.auto && row.bucketId === row.suggestedId ? "auto" : "")}
               </div>
               <button onClick={() => setCsvReviewRows(rows => rows.filter(x => x.rowId !== row.rowId))}
                 style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
