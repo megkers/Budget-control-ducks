@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { sankey as d3Sankey, sankeyLinkHorizontal } from "d3-sankey";
-import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, estimateCents, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE } from "./agent.js";
+import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, estimateCents, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE, suggestBuckets, CATEGORIZE_MAX_ROWS } from "./agent.js";
 
 // ------------
 // localStorage helpers
@@ -420,6 +420,40 @@ count: (prev && prev.bucketId === bucketId ? (prev.count || 0) : 0) + 1,
 updatedAt: new Date().toISOString().slice(0, 10),
 };
 return rules;
+}
+
+// ------------
+// AI categorization (issue #7)
+// ------------
+// Off by default: turning it on sends merchant descriptions from imports to
+// Anthropic, which is this person's call to make, not the app's. Stored as its
+// own key rather than inside budgetConfig so a config re-import never flips it.
+function loadAiCategorize() {
+try { return localStorage.getItem("budgetAiCategorize") === "1"; } catch(e) { return false; }
+}
+function saveAiCategorize(on) {
+try { if (on) localStorage.setItem("budgetAiCategorize", "1"); else localStorage.removeItem("budgetAiCategorize"); } catch(e) {}
+}
+// Fold the model's suggestions into review rows. Only a row that is still
+// blank takes a suggestion: the user may have categorized rows by hand while
+// the request was in flight, and their choice always wins. A suggestion for
+// an unknown row, a bucket the picker does not offer, or with no usable
+// confidence is dropped rather than guessed at. Returns { rows, filled }.
+function mergeAiSuggestions(rows, suggestions, validBucket) {
+var byId = {};
+(suggestions || []).forEach(function(sg) {
+if (sg && typeof sg.id === "string" && sg.bucketId && validBucket[sg.bucketId]) byId[sg.id] = sg;
+});
+var filled = 0;
+var out = rows.map(function(r) {
+if (r.bucketId) return r;
+var sg = byId[r.rowId];
+if (!sg) return r;
+var conf = (typeof sg.confidence === "number" && isFinite(sg.confidence)) ? Math.max(0, Math.min(1, sg.confidence)) : null;
+filled++;
+return { ...r, bucketId: sg.bucketId, auto: true, ai: true, suggestedId: sg.bucketId, confidence: conf };
+});
+return { rows: out, filled: filled };
 }
 
 // ------------
@@ -1937,6 +1971,13 @@ const [csvReviewRows, setCsvReviewRows] = useState([]);
 const [csvSkipped, setCsvSkipped] = useState(0);
 const [csvDupes, setCsvDupes] = useState(0);
 const [csvAutos, setCsvAutos] = useState(0); // rows pre-categorized by merchant memory
+// AI suggestions for rows no rule matched. Which rows took one is read off
+// the rows themselves (row.ai); aiReq is bumped on every request and on close
+// so a late reply for a review that is gone is ignored instead of filling the
+// next one.
+const [aiBusy, setAiBusy] = useState(false);
+const [aiError, setAiError] = useState("");
+const aiReq = useRef(0);
 const [csvRefunds, setCsvRefunds] = useState(0);
 const [csvDragOver, setCsvDragOver] = useState(false);
 // Screenshot import. csvSource says which capture method is driving the shared
@@ -1965,6 +2006,7 @@ const [showSearch, setShowSearch] = useState(false);
 // apiKey is the saved, verified key. keyInput is what is being typed in
 // Settings and is never persisted until it verifies.
 const [apiKey, setApiKey] = useState(loadApiKey());
+const [aiCategorize, setAiCategorize] = useState(loadAiCategorize());
 const [keyInput, setKeyInput] = useState("");
 const [keyStatus, setKeyStatus] = useState("idle"); // idle | verifying | error
 const [keyError, setKeyError] = useState("");
@@ -2073,6 +2115,9 @@ setCsvDragOver(false);
 setCsvSource("csv");
 clearShot();
 setShotBusy(false);
+aiReq.current++;
+setAiBusy(false);
+setAiError("");
 }
 function closeLogSpend() { resetCsv(); setEditModal(null); }
 
@@ -2201,11 +2246,15 @@ confidence = hit.confidence;
 bucketId = r.bucketId;
 confidence = (typeof r.confidence === "number") ? r.confidence : null;
 }
-if (bucketId) autos++;
+// Only a rule counts as an auto. The model's picks are flagged ai so the
+// review screen can say which rows a person decided and which a model did.
+const fromRule = !!(hit && validBucket[hit.bucketId]);
+if (fromRule) autos++;
 out.push({
 rowId: newTxnId(), date, amount, description, sourceRef: ref,
 bucketId,
 auto: !!bucketId,
+ai: !!bucketId && !fromRule,
 suggestedId: bucketId,
 confidence,
 });
@@ -2238,6 +2287,40 @@ img.onerror = () => { URL.revokeObjectURL(url); setShotError("That file could no
 img.src = url;
 }
 
+// What every model call gets told about this person: the buckets the picker
+// offers and their last twenty confirmed choices. Shared so the screenshot
+// reader and the categorizer never disagree about what a bucket is called.
+function aiContext() {
+return {
+buckets: buckets.filter(b => DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id))
+.map(b => ({ id: b.id, label: b.label })),
+examples: transactions.filter(t => t.description && t.bucketId).slice(-20)
+.map(t => ({ description: t.description, bucketId: t.bucketId })),
+};
+}
+
+// Ask the model about the rows merchant memory could not place. Fires after
+// the rules have run, so a merchant is only ever asked about once: confirming
+// the suggestion writes a rule, and the rule answers next time. Runs in the
+// background; the review screen is usable the whole time and the reply fills
+// only rows still blank when it lands. Any failure degrades to "categorize by
+// hand" and never blocks the import.
+async function runAiSuggest(rows) {
+if (!aiCategorize || !apiKey) return;
+const blank = rows.filter(r => !r.bucketId).slice(0, CATEGORIZE_MAX_ROWS)
+.map(r => ({ id: r.rowId, date: r.date, amount: r.amount, description: r.description }));
+if (!blank.length) return;
+const req = ++aiReq.current;
+setAiBusy(true); setAiError("");
+const res = await suggestBuckets(apiKey, blank, aiContext());
+if (req !== aiReq.current) return;
+setAiBusy(false);
+if (!res.ok) { setAiError(res.error); return; }
+const validBucket = {};
+buckets.forEach(b => { if (DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id)) validBucket[b.id] = true; });
+setCsvReviewRows(current => mergeAiSuggestions(current, res.suggestions, validBucket).rows);
+}
+
 // Crop, downscale, and read. One call, no retry: a screenshot can never cost
 // more than a screenshot.
 async function runScreenshotExtract() {
@@ -2251,12 +2334,8 @@ w: Math.max(1, Math.round(shotRect.w * nat.w)),
 h: Math.max(1, Math.round(shotRect.h * nat.h)),
 };
 const image = cropToBase64(shotImg, rect);
-const recent = transactions.filter(t => t.description && t.bucketId).slice(-20)
-.map(t => ({ description: t.description, bucketId: t.bucketId }));
 const res = await extractTransactions(apiKey, image, {
-buckets: buckets.filter(b => DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id))
-.map(b => ({ id: b.id, label: b.label })),
-examples: recent,
+...aiContext(),
 today: new Date().toISOString().slice(0, 10),
 });
 setShotBusy(false);
@@ -2283,6 +2362,7 @@ setCsvSkipped(res.skipped);
 setCsvDupes(res.dupes);
 setCsvAutos(res.autos);
 setCsvRefunds(res.refunds);
+runAiSuggest(res.out);
 }
 
 // Commit the categorized review rows. Rows without a bucket are left behind
@@ -3188,6 +3268,21 @@ const renderLogSpend = () => {
             {csvAutos} pre-categorized from merchant memory - change any that look wrong.
           </div>
         )}
+        {aiBusy && (
+          <div style={{ fontSize: "11px", color: T.blue, marginTop: "3px" }}>
+            Asking AI about the rows merchant memory could not place...
+          </div>
+        )}
+        {!aiBusy && csvReviewRows.some(r => r.ai && r.bucketId === r.suggestedId) && (
+          <div style={{ fontSize: "11px", color: T.blue, marginTop: "3px" }}>
+            Rows marked <span style={{ letterSpacing: "0.08em" }}>ai</span> are the model's guess, not yours - check each before importing. Confirming one teaches merchant memory, so you will not be asked about that merchant again.
+          </div>
+        )}
+        {aiError && (
+          <div style={{ fontSize: "11px", color: T.text3, marginTop: "3px" }}>
+            AI suggestions unavailable: {aiError} Categorize these by hand.
+          </div>
+        )}
         <div style={{ fontSize: "11px", color: T.text3, marginTop: "3px" }}>Categorizing a row also fills any other blank row from the same merchant. Rows left uncategorized are discarded when you close.</div>
         {csvRefunds > 0 && (
           <div style={{ fontSize: "11px", color: T.green, marginTop: "3px" }}>
@@ -3237,10 +3332,10 @@ const renderLogSpend = () => {
               {/* Fixed-width slot so the chip appearing never shifts the picker. */}
               {/* A row the model was unsure of outranks the auto chip here: the
                   point of the slot is to say which rows still need a human. */}
-              <div style={{ fontSize: "10px", letterSpacing: "0.08em", textAlign: "center", color: (row.confidence != null && row.confidence < LOW_CONFIDENCE) ? "#FFB347" : T.green }}>
+              <div style={{ fontSize: "10px", letterSpacing: "0.08em", textAlign: "center", color: (row.confidence != null && row.confidence < LOW_CONFIDENCE) ? "#FFB347" : row.ai ? T.blue : T.green }}>
                 {(row.confidence != null && row.confidence < LOW_CONFIDENCE)
                   ? "check"
-                  : (row.auto && row.bucketId === row.suggestedId ? "auto" : "")}
+                  : (row.auto && row.bucketId === row.suggestedId ? (row.ai ? "ai" : "auto") : "")}
               </div>
               <button onClick={() => setCsvReviewRows(rows => rows.filter(x => x.rowId !== row.rowId))}
                 style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -5162,6 +5257,22 @@ return (
             <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>key_off</span>
             Remove Key
           </button>
+
+          {/* AI categorization opt-in. Lives under the key on purpose: the
+              toggle is meaningless without one, and putting it here keeps the
+              privacy trade-off next to the thing that makes it possible. */}
+          <div onClick={() => { const on = !aiCategorize; setAiCategorize(on); saveAiCategorize(on); }}
+            style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginTop: "14px", paddingTop: "14px", borderTop: "1px solid " + T.bord, cursor: "pointer" }}>
+            <div style={{ width: "36px", height: "20px", borderRadius: "10px", background: aiCategorize ? T.blue : T.bord, position: "relative", flexShrink: 0, marginTop: "1px", transition: "background 0.15s" }}>
+              <div style={{ position: "absolute", top: "2px", left: aiCategorize ? "18px" : "2px", width: "16px", height: "16px", borderRadius: "50%", background: T.bg, transition: "left 0.15s" }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: T.text1 }}>Suggest buckets for imported rows</div>
+              <div style={{ fontSize: "11px", color: T.text3, lineHeight: "1.5", marginTop: "2px" }}>
+                When a CSV import has rows merchant memory cannot place, ask the model for a guess. Suggestions are marked and never imported without your say-so. Sends the date, amount and description of those rows to Anthropic. Off by default.
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div>

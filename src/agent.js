@@ -8,7 +8,7 @@
 // Models are picked per feature, not shared. The conversation has to reason
 // across every bucket, so it gets the capable model. Verifying a key only needs
 // a round trip that proves the key is real and has credit, so it uses the
-// cheapest one. Screenshot reading will add a third constant here.
+// cheapest one. Screenshot reading and categorization each add their own below.
 export const AGENT_MODEL = "claude-opus-5";
 export const VERIFY_MODEL = "claude-haiku-4-5";
 
@@ -258,5 +258,102 @@ export async function extractTransactions(key, image, context) {
     return { ok: true, rows: rows, error: "" };
   } catch (e) {
     return { ok: false, rows: [], error: describeApiError(e) };
+  }
+}
+
+// ------------
+// AI categorization (issue #7)
+// ------------
+// Runs only on rows no merchant rule matched, so it only ever sees a merchant
+// once: confirming a suggestion writes a rule, and the rule answers next time.
+// Same reasoning as the vision model: picking one label from a short list is
+// a cheap task, and this is the cheapest model that does it well.
+export const CATEGORIZE_MODEL = "claude-haiku-4-5";
+
+// One batch per import, however many rows. Above this the prompt gets long
+// enough that Haiku starts skipping rows, so the caller trims to the first N
+// and the rest stay uncategorized for the user to fill by hand.
+export const CATEGORIZE_MAX_ROWS = 60;
+
+const SUGGEST_SCHEMA = {
+  type: "object",
+  properties: {
+    suggestions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "The row id exactly as given" },
+          bucketId: { type: ["string", "null"], description: "Best matching bucket id, or null if nothing fits" },
+          confidence: { type: "number", description: "0 to 1, how sure the bucket is right for this person" },
+        },
+        required: ["id", "bucketId", "confidence"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["suggestions"],
+  additionalProperties: false,
+};
+
+// Suggest a bucket for each uncategorized row. rows is [{ id, date, amount,
+// description }]; context carries the same buckets and examples the screenshot
+// reader gets, so both paths categorize with the same picture of this person.
+// One call, bounded output, no retry. Returns { ok, suggestions, error } and
+// never throws: a failure here must degrade to "categorize by hand", never
+// block the import.
+export async function suggestBuckets(key, rows, context) {
+  const buckets = (context && context.buckets) || [];
+  const examples = (context && context.examples) || [];
+  const batch = (rows || []).slice(0, CATEGORIZE_MAX_ROWS);
+  if (!batch.length) return { ok: true, suggestions: [], error: "" };
+
+  const bucketList = buckets.map(b => "- " + b.id + ": " + b.label).join("\n");
+  const exampleList = examples.length
+    ? examples.map(e => "- " + e.description + " -> " + e.bucketId).join("\n")
+    : "(none yet)";
+  const rowList = batch.map(r =>
+    r.id + " | " + (r.date || "") + " | " + (typeof r.amount === "number" ? r.amount.toFixed(2) : "") + " | " + (r.description || "")
+  ).join("\n");
+
+  const system = [
+    "You sort bank and credit card transactions into a person's budget buckets.",
+    "",
+    "The buckets, as id: label. Answer with the id, never the label:",
+    bucketList,
+    "",
+    "Bucket choices this person has already confirmed, as a guide to their habits:",
+    exampleList,
+    "",
+    "Return one suggestion per row, keyed by the row id exactly as given. Use",
+    "null when no bucket fits; a wrong bucket costs this person more time than a",
+    "blank one. Report a low confidence when the description is cryptic or the",
+    "merchant could belong to more than one bucket.",
+  ].join("\n");
+
+  try {
+    const client = await getClient(key);
+    const res = await client.messages.create({
+      model: CATEGORIZE_MODEL,
+      max_tokens: 4096,
+      system: system,
+      output_config: { format: { type: "json_schema", schema: SUGGEST_SCHEMA } },
+      messages: [{
+        role: "user",
+        content: "Rows as id | date | amount | description:\n" + rowList,
+      }],
+    });
+
+    const text = (res.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      return { ok: false, suggestions: [], error: "The suggestions came back in a shape the app could not read." };
+    }
+    const suggestions = (parsed && Array.isArray(parsed.suggestions)) ? parsed.suggestions : [];
+    return { ok: true, suggestions: suggestions, error: "" };
+  } catch (e) {
+    return { ok: false, suggestions: [], error: describeApiError(e) };
   }
 }

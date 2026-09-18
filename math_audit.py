@@ -519,6 +519,65 @@ check("Dragging an edge past its opposite stays valid",
       near(crop_apply("e", R, -0.8, 0), {"x": 0, "y": 0.2, "w": 0.2, "h": 0.6}))
 
 # ========================================================
+# AI SUGGESTION MERGE (auto-import phase 4)
+#    Ported from mergeAiSuggestions in App.jsx. The rule that matters: a
+#    suggestion may only ever fill a blank row. Anything the user set by hand
+#    while the request was in flight stays exactly as they left it.
+# ========================================================
+print("\n=== AI Suggestion Merge ===")
+
+check("mergeAiSuggestions still defined", "function mergeAiSuggestions" in code,
+      "renamed or removed; the port below no longer tests the real thing")
+
+def merge_ai(rows, suggestions, valid):
+    by_id = {}
+    for sg in suggestions or []:
+        if sg and isinstance(sg.get("id"), str) and sg.get("bucketId") and valid.get(sg["bucketId"]):
+            by_id[sg["id"]] = sg
+    filled = 0
+    out = []
+    for r in rows:
+        if r.get("bucketId"):
+            out.append(r); continue
+        sg = by_id.get(r["rowId"])
+        if not sg:
+            out.append(r); continue
+        c = sg.get("confidence")
+        conf = max(0.0, min(1.0, c)) if isinstance(c, (int, float)) and not isinstance(c, bool) and c == c and abs(c) != float("inf") else None
+        filled += 1
+        out.append({**r, "bucketId": sg["bucketId"], "auto": True, "ai": True, "suggestedId": sg["bucketId"], "confidence": conf})
+    return out, filled
+
+VALID = {"groceries": True, "dining": True}
+def row(rid, bucket=None):
+    return {"rowId": rid, "description": "X", "bucketId": bucket}
+
+out, n = merge_ai([row("a"), row("b")], [{"id": "a", "bucketId": "groceries", "confidence": 0.8}], VALID)
+check("Blank row takes a suggestion", out[0]["bucketId"] == "groceries" and out[0]["ai"] is True and n == 1)
+check("Row with no suggestion stays blank", out[1]["bucketId"] is None and "ai" not in out[1])
+
+out, n = merge_ai([row("a", "dining")], [{"id": "a", "bucketId": "groceries", "confidence": 0.9}], VALID)
+check("Hand-set row is never overwritten", out[0]["bucketId"] == "dining" and n == 0)
+
+out, n = merge_ai([row("a")], [{"id": "a", "bucketId": "vacation", "confidence": 0.9}], VALID)
+check("Bucket the picker does not offer is dropped", out[0]["bucketId"] is None and n == 0)
+
+out, n = merge_ai([row("a")], [{"id": "a", "bucketId": None, "confidence": 0.9}], VALID)
+check("Null bucket leaves the row blank", out[0]["bucketId"] is None and n == 0)
+
+out, n = merge_ai([row("a")], [{"id": "zzz", "bucketId": "groceries", "confidence": 0.9}], VALID)
+check("Unknown row id is ignored", out[0]["bucketId"] is None and n == 0)
+
+out, n = merge_ai([row("a")], [{"id": "a", "bucketId": "groceries", "confidence": 1.7}], VALID)
+check("Confidence clamped to 0..1", out[0]["confidence"] == 1.0)
+
+out, n = merge_ai([row("a")], [{"id": "a", "bucketId": "groceries", "confidence": "high"}], VALID)
+check("Non-numeric confidence becomes null", out[0]["bucketId"] == "groceries" and out[0]["confidence"] is None)
+
+out, n = merge_ai([row("a")], [{"id": 7, "bucketId": "groceries", "confidence": 0.9}], VALID)
+check("Non-string id is ignored", out[0]["bucketId"] is None)
+
+# ========================================================
 # SUMMARY
 # ========================================================
 print(f"\n{'='*50}")
