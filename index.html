@@ -27,8 +27,11 @@
         direction: ltr;
       }
     </style>
+  </head>
+  <body>
     <script>
-      // Set body bg before React loads to prevent flash
+      // Set body bg before React loads to prevent flash. Must sit inside <body>:
+      // from <head>, document.body is still null and this throws.
       (function() {
         var t = "dark";
         try { t = localStorage.getItem("budgetTheme") || "dark"; } catch(e) {}
@@ -40,8 +43,6 @@
         document.body.dataset.theme = t === "light" ? "light" : "dark";
       })();
     </script>
-  </head>
-  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
