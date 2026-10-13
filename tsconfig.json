@@ -14,7 +14,9 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
 
-    "strict": false
+    "strict": false,
+    // Part of strict, turned on ahead of the rest. Full strict is the next step of #37.
+    "noImplicitAny": true
   },
   "include": ["src"]
 }
