@@ -1,16 +1,16 @@
 """
 Math audit test suite for Budget Control
 Validates every calculation path against known scenarios.
-Run: python3 math_audit.py [path/to/App.jsx]   (defaults to src/App.jsx)
-Helper modules next to App.jsx (storage.ts, csv.ts, ...) are read too.
+Run: python3 math_audit.py [path/to/App.tsx]   (defaults to src/App.tsx)
+Helper modules next to App.tsx (storage.ts, csv.ts, ...) are read too.
 """
 import sys, json, math, glob, os
 
-APP = sys.argv[1] if len(sys.argv) > 1 else 'src/App.jsx'
+APP = sys.argv[1] if len(sys.argv) > 1 else 'src/App.tsx'
 SRC_DIR = os.path.dirname(APP) or '.'
 SRC_FILES = [APP] + sorted(
     p for ext in ('js', 'jsx', 'ts', 'tsx') for p in glob.glob(os.path.join(SRC_DIR, '*.' + ext))
-    if os.path.basename(p) not in ('App.jsx', 'agent.ts', 'main.tsx'))
+    if os.path.basename(p) not in ('App.tsx', 'agent.ts', 'main.tsx'))
 code = ''
 for p in SRC_FILES:
     with open(p, 'rb') as f:
@@ -452,7 +452,7 @@ test_payment_equals_interest()
 # ========================================================
 # CROP GEOMETRY (screenshot import)
 #    Normalized 0..1 rects over the displayed image. Ported from the
-#    cropNormalize / cropHit / cropApply helpers in App.jsx: this is the
+#    cropNormalize / cropHit / cropApply helpers in crop.ts: this is the
 #    fiddliest maths in the import path and the easiest to break silently,
 #    because a wrong rect still produces a plausible-looking picture.
 # ========================================================
@@ -528,7 +528,7 @@ check("Dragging an edge past its opposite stays valid",
 
 # ========================================================
 # AI SUGGESTION MERGE (auto-import phase 4)
-#    Ported from mergeAiSuggestions in App.jsx. The rule that matters: a
+#    Ported from mergeAiSuggestions in rules.ts. The rule that matters: a
 #    suggestion may only ever fill a blank row. Anything the user set by hand
 #    while the request was in flight stays exactly as they left it.
 # ========================================================

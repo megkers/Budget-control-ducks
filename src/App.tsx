@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import type { ReactNode, CSSProperties, MouseEventHandler } from "react";
 import { sankey as d3Sankey, sankeyLinkHorizontal } from "d3-sankey";
+import type { SankeyNode, SankeyLink } from "d3-sankey";
 import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, estimateCents, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE, suggestBuckets, CATEGORIZE_MAX_ROWS } from "./agent.js";
 import { loadConfig, saveConfig, loadData, saveData, loadDebts, saveDebts, loadTransactions, saveTransactions, newTxnId, toTxnRecord, foldLegacyTransactions, txnInMonth, monthLabelFromDate, getDefaultData } from "./storage.js";
 import { parseCSVSections, parseFlatCSV, csvGuessMapping, csvParseAmount, csvParseDate, csvRowHash, csvHeaderSignature, loadCsvMappings, saveCsvMappings } from "./csv.js";
@@ -9,6 +11,15 @@ import { resolveFixedDebtLinks, buildDebtWindow } from "./debts.js";
 import { cropNormalize, cropHit, cropApply } from "./crop.js";
 import { fmt, ordinal } from "./format.js";
 import { loadTheme, saveTheme, THEMES, resolveTheme } from "./theme.js";
+import type { BudgetConfig, Bucket, Income, PayFrequency, MonthData, Debt, DebtType, DebtLinkType, BillItem, BillDraft, BillCategory, ThemePref, CsvOutflow } from "./types.js";
+
+// Money Flow charts (d3-sankey). Nodes are identified by id. Links go in with
+// source/target as node ids; once the layout runs, d3 replaces both with the
+// node objects themselves, which is the shape FlowGraph describes.
+type FlowNode = { id: string };
+type LaidNode = SankeyNode<FlowNode, {}>;
+type LaidLink = SankeyLink<FlowNode, {}> & { source: LaidNode; target: LaidNode };
+type FlowGraph = { nodes: LaidNode[]; links: LaidLink[] };
 
 // Single module-level theme read for non-reactive components (SetupGate, WizardShell, OnboardingWizard).
 // BudgetTracker has its own reactive T via useState which shadows this.
@@ -123,7 +134,7 @@ Import from CSV
   var reader = new FileReader();
   reader.onload = function(e) {
     try {
-      var text = e.target.result;
+      var text = e.target.result as string; // readAsText always yields a string
       var sections = parseCSVSections(text);
 
       // Validate
@@ -152,11 +163,11 @@ Import from CSV
       var parsedPayday = parseInt(metaMap["Primary Payday"], 10) || 1;
 
       // -- Parse INCOME --
-      var incArr = dataRows("INCOME").map(function(r) {
+      var incArr: Income[] = dataRows("INCOME").map(function(r) {
         return {
           label: (r[0] || "").trim() || "Income",
           perPaycheck: num(r[1]),
-          frequency: (r[2] || "monthly").trim(),
+          frequency: (r[2] || "monthly").trim() as PayFrequency,
           payday: parseInt(r[3], 10) || 1,
           netPay: num(r[4]),
         };
@@ -168,8 +179,8 @@ Import from CSV
       });
 
       // -- Parse FIXED BILLS --
-      var billItems = dataRows("FIXED BILLS").map(function(r) {
-        return { name: (r[0] || "").trim(), amt: num(r[1]), day: Math.min(28, Math.max(1, parseInt(r[2], 10) || 1)), category: (r[3] || "Other").trim(), note: (r[4] || "").trim(), id: (r[5] || "").trim() || newBillId() };
+      var billItems: BillItem[] = dataRows("FIXED BILLS").map(function(r) {
+        return { name: (r[0] || "").trim(), amt: num(r[1]), day: Math.min(28, Math.max(1, parseInt(r[2], 10) || 1)), category: (r[3] || "Other").trim() as BillCategory, note: (r[4] || "").trim(), id: (r[5] || "").trim() || newBillId() };
       }).filter(function(b) { return b.name && (b.amt > 0 || b.note === "cc"); });
       var billsAmt = Math.round(billItems.filter(function(b) { return b.note !== "cc"; }).reduce(function(s, b) { return s + b.amt; }, 0) * 100) / 100;
 
@@ -190,9 +201,9 @@ Import from CSV
       // -- Build config for wizard pre-population --
       var importedCfg = {
         incomes: incArr,
-        buckets: [
+        buckets: ([
           { id: "bills", label: "Fixed Bills", amount: billsAmt, color: T.blue, items: billItems },
-        ].concat(
+        ] as Bucket[]).concat(
           discBkts.map(function(b) { return { id: b.id, label: b.label, amount: b.amount, color: b.color, items: [{ name: b.label, amt: b.amount }] }; }),
           resBkts.map(function(b) { return { id: b.id, label: b.label, amount: b.amount, color: b.color, items: [{ name: b.label, amt: b.amount }] }; })
         ),
@@ -202,13 +213,13 @@ Import from CSV
       };
 
       // -- Parse DEBTS and save to localStorage (wizard reads them on finish) --
-      var newDebts = dataRows("DEBTS").map(function(r, i) {
+      var newDebts: Debt[] = dataRows("DEBTS").map(function(r, i) {
         return {
-          id: "d-imp-" + Date.now() + "-" + i, name: (r[0] || "").trim(), type: (r[1] || "other").trim(),
+          id: "d-imp-" + Date.now() + "-" + i, name: (r[0] || "").trim(), type: (r[1] || "other").trim() as DebtType,
           balance: num(r[2]), apr: num(r[3]), monthly: num(r[4]), monthlyPrincipal: num(r[5]),
           escrow: num(r[6]), balanceAsOf: (r[7] || new Date().toISOString().slice(0, 10)).trim(),
           grows: (r[8] || "").trim().toLowerCase() === "yes", note: (r[9] || "").trim(),
-          linkedBucketId: (r[10] || "").trim() || null, linkedType: (r[11] || "manual").trim(),
+          linkedBucketId: (r[10] || "").trim() || null, linkedType: (r[11] || "manual").trim() as DebtLinkType,
         };
       }).filter(function(d) { return d.name; });
       newDebts = resolveFixedDebtLinks(billItems, newDebts);
@@ -296,7 +307,7 @@ Have a CSV from a previous export? Import it to skip manual entry.
   var startYear = demoYear;
   if (startMonth < 0) { startMonth += 12; startYear--; }
 
-  var demoCfg = {
+  var demoCfg: BudgetConfig = {
     incomes: [
       { label: "Main Job", perPaycheck: 2750, netPay: 5500, frequency: "semimonthly", payday: 1 },
     ],
@@ -358,7 +369,7 @@ Have a CSV from a previous export? Import it to skip manual entry.
     };
   }
 
-  var demoDebts = [
+  var demoDebts: Debt[] = [
     { id: "demo-1", name: "Car Loan", type: "auto", balance: 8450, apr: 4.5, monthly: 350, monthlyPrincipal: 350, escrow: 0, balanceAsOf: now.toISOString().slice(0, 10), grows: false, linkedBucketId: "fb-demo-car", linkedType: "fixed", note: "" },
     { id: "demo-2", name: "Student Loan", type: "student", balance: 12200, apr: 5.25, monthly: 250, monthlyPrincipal: 250, escrow: 0, balanceAsOf: now.toISOString().slice(0, 10), grows: false, linkedBucketId: null, linkedType: "manual", note: "Federal direct loan" },
   ];
@@ -519,7 +530,7 @@ frequency: i.frequency || "monthly",
 return [{ label: "Main Job", netPay: "", payday: "", frequency: "monthly" }];
 });
 
-const [bills, setBills] = useState(() => {
+const [bills, setBills] = useState<BillDraft[]>(() => {
 if ((initialConfig && initialConfig.buckets)) {
 const savedBills = initialConfig.buckets.find(b => b.id === "bills");
 const savedItems = (savedBills && savedBills.items) || [];
@@ -622,7 +633,7 @@ function finish() {
 const filledBills = bills.filter(b => b.name.trim() && parseFloat(b.amt) > 0);
 const billsAmt    = Math.round(filledBills.filter(b => b.note !== "cc").reduce((s, b) => s + (parseFloat(b.amt) || 0), 0) * 100) / 100;
 // Preserve setupYear/setupMonth from prior save so re-running wizard doesn't reset the start date
-const existingCfg = loadConfig() || {};
+const existingCfg: Partial<BudgetConfig> = loadConfig() || {};
 const now0 = new Date();
 const cfg = {
 incomes: incomes.map(i => ({
@@ -667,7 +678,7 @@ const FREQ_OPTS = [
 ];
 const fmt0 = n => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 const canNext = incomes.every(i => {
-if (!parseFloat(i.netPay) > 0) return false;
+if (!parseFloat(i.netPay)) return false;
 if (i.frequency === "monthly" || i.frequency === "semimonthly") {
 if (!i.payday || parseInt(i.payday) < 1 || parseInt(i.payday) > 28) return false;
 }
@@ -812,7 +823,7 @@ Your paycheck gets split into three pools. The next three steps will fill each o
 
 // -- Step: bills --
 if (step === "bills") {
-const CAT_ORDER = ["Housing","Transportation","Utilities","Subscriptions","Health","Financial","Giving","Other"];
+const CAT_ORDER: BillCategory[] = ["Housing","Transportation","Utilities","Subscriptions","Health","Financial","Giving","Other"];
 const grouped = bills.reduce((acc, b, i) => {
 const c = b.category || "Other";
 if (!acc[c]) acc[c] = [];
@@ -935,7 +946,7 @@ function toggle(id, name, amt, type) {
 function updLinked(id, patch) { setDebts(p => p.map(d => d.linkedBucketId === id ? { ...d, ...patch } : d)); }
 function updManual(id, patch) { setDebts(p => p.map(d => d.id === id ? { ...d, ...patch } : d)); }
 
-const inpStyle = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "14px", width: "100%", boxSizing: "border-box" };
+const inpStyle: CSSProperties = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "14px", width: "100%", boxSizing: "border-box" };
 
 const renderDebtDetail = (d, onChange) => (
   <div style={{ marginTop: "12px", borderTop: "1px solid " + T.bord, paddingTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -987,7 +998,7 @@ return (
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: "13px", fontWeight: "600", color: T.text1 }}>{b.name}</div>
-                  <div style={{ fontSize: "12px", color: T.text3 }}>{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(b.amt)}/mo - fixed payment</div>
+                  <div style={{ fontSize: "12px", color: T.text3 }}>{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(b.amt))}/mo - fixed payment</div>
                 </div>
               </div>
               {isLinked && debt && renderDebtDetail(debt, p => updLinked(b.id, p))}
@@ -1013,7 +1024,7 @@ return (
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: "13px", fontWeight: "600", color: T.text1 }}>{b.label}</div>
-                  <div style={{ fontSize: "12px", color: T.text3 }}>up to {new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(b.amount)}/mo - variable</div>
+                  <div style={{ fontSize: "12px", color: T.text3 }}>up to {new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Number(b.amount))}/mo - variable</div>
                 </div>
               </div>
               {isLinked && debt && renderDebtDetail(debt, p => updLinked(b.id, p))}
@@ -1078,9 +1089,9 @@ bills: bills.map((b, i) => ({ b, i })).filter(({ b }) => b.name.trim() && parseF
 disc: disc.filter(b => parseFloat(b.amount) > 0).map(b => b.id),
 res: reserves.filter(b => parseFloat(b.amount) > 0).map(b => b.id),
 };
-const rowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "7px 0", borderBottom: "1px solid " + T.bord + "55" };
-const rowName = { fontSize: "13px", color: T.text1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-const rowInp = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "6px 8px", borderRadius: "4px", fontSize: "14px", width: "90px", textAlign: "right", fontFamily: "DM Mono, monospace" };
+const rowStyle: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "7px 0", borderBottom: "1px solid " + T.bord + "55" };
+const rowName: CSSProperties = { fontSize: "13px", color: T.text1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const rowInp: CSSProperties = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "6px 8px", borderRadius: "4px", fontSize: "14px", width: "90px", textAlign: "right", fontFamily: "DM Mono, monospace" };
 const perMo = <span style={{ fontSize: "12px", color: T.text3, flexShrink: 0 }}>/mo</span>;
 const section = (label, color, total, targetStep, rows) => (
 <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 14px", marginBottom: "10px" }}>
@@ -1224,11 +1235,11 @@ const cs = {
   body: { padding: "20px 24px", margin: "0" },
   lbl: { fontSize: "12px", letterSpacing: "0.12em", color: T.text2, textTransform: "uppercase", marginBottom: "4px" },
   inp: { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "13px", boxSizing: "border-box", fontFamily: "DM Mono, monospace" },
-};
-function Card({ children, border, style, onClick }) {
+} satisfies Record<string, CSSProperties>;
+function Card({ children, border, style, onClick }: { children?: ReactNode; border?: string; style?: CSSProperties; onClick?: MouseEventHandler<HTMLDivElement> }) {
   return <div onClick={onClick} style={{ background: T.surf, border: "1px solid " + (border || T.bord), borderRadius: "8px", padding: "16px 18px", marginBottom: "10px", ...style }}>{children}</div>;
 }
-function Btn({ color, outline, onClick, children, style }) {
+function Btn({ color, outline, onClick, children, style }: { color: string; outline?: boolean; onClick?: MouseEventHandler<HTMLButtonElement>; children?: ReactNode; style?: CSSProperties }) {
   return <button onClick={onClick} style={{ background: outline ? "transparent" : color, border: "1px solid " + color, color: outline ? color : T.bg, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", ...style }}>{children}</button>;
 }
 
@@ -1291,7 +1302,7 @@ const [csvFileName, setCsvFileName] = useState("");
 const [csvHeaders, setCsvHeaders] = useState([]);
 const [csvRawRows, setCsvRawRows] = useState([]);
 const [csvMapping, setCsvMapping] = useState({ date: -1, amount: -1, description: -1, debit: -1, credit: -1 });
-const [csvOutflow, setCsvOutflow] = useState("negative"); // single-amount sign meaning money out
+const [csvOutflow, setCsvOutflow] = useState<CsvOutflow>("negative"); // single-amount sign meaning money out
 const [csvReviewRows, setCsvReviewRows] = useState([]);
 const [csvSkipped, setCsvSkipped] = useState(0);
 const [csvDupes, setCsvDupes] = useState(0);
@@ -1379,7 +1390,7 @@ function getReserveBal(id) {
     for (let m = 0; m < 12; m++) {
       if (y === setupYear && m < setupMonth) continue;
       if (y > year || (y === year && m > month)) break;
-      const d = data[`${y}-${m}`] || {};
+      const d: Partial<MonthData> = data[`${y}-${m}`] || {};
       bal += mo - ((d.spent && d.spent[id]) || 0);
     }
   return Math.round(bal * 100) / 100;
@@ -1817,7 +1828,8 @@ const openEditModal = (panel) => {
 };
 
 const saveEditModal = () => {
-  const c = loadConfig() || {};
+  // BudgetTracker only renders once a config exists, so the {} is a guard, not a real case.
+  const c = (loadConfig() || {}) as BudgetConfig;
   const prev = c.buckets || [];
 
   if (editModal === "bills") {
@@ -1866,7 +1878,7 @@ const saveEditModal = () => {
       };
     });
     if (savedInc.length > 0) {
-      var newCfg = { ...c, incomes: savedInc, primaryPayday: parseInt(savedInc[0].payday, 10) || 1 };
+      var newCfg = { ...c, incomes: savedInc, primaryPayday: parseInt(String(savedInc[0].payday), 10) || 1 };
       saveConfig(newCfg);
       setCfg(newCfg);
     }
@@ -1894,7 +1906,7 @@ const renderModalOverlay = (title, content) => (
   </div>
 );
 
-const renderInfoModal = (title, content, onClose) => {
+const renderInfoModal = (title: string, content: ReactNode, onClose?: () => void) => {
   const close = onClose || (() => setShowFlowInfo(false));
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 0" }}
@@ -2442,7 +2454,7 @@ const renderLogSpend = () => {
           <div style={{ position: "absolute", left: (shotRect.x * 100) + "%", top: (shotRect.y * 100) + "%", width: (shotRect.w * 100) + "%", height: (shotRect.h * 100) + "%", border: "2px solid " + T.blue, boxShadow: "0 0 0 9999px rgba(0,0,0,0.6)", pointerEvents: "none" }}>
             {/* Drawn, not interactive: the container owns every pointer event
                 and works out what was grabbed. These only say where to grab. */}
-            {[["nw", 0, 0], ["ne", 1, 0], ["sw", 0, 1], ["se", 1, 1]].map(([id, hx, hy]) => (
+            {([["nw", 0, 0], ["ne", 1, 0], ["sw", 0, 1], ["se", 1, 1]] as [string, number, number][]).map(([id, hx, hy]) => (
               <div key={id} style={{ position: "absolute", left: (hx * 100) + "%", top: (hy * 100) + "%", width: "16px", height: "16px", marginLeft: "-8px", marginTop: "-8px", background: T.blue, border: "2px solid " + T.bg, borderRadius: "3px" }} />
             ))}
           </div>
@@ -2532,7 +2544,7 @@ const renderLogSpend = () => {
           <div>
             <div style={{ ...cs.lbl, marginBottom: "4px" }}>In the Amount column, money spent is shown as</div>
             <div style={{ background: T.bg, borderRadius: "4px", padding: "3px", display: "flex" }}>
-              {[["negative", "Negative (-45.00)"], ["positive", "Positive (45.00)"]].map(([val, label]) => (
+              {([["negative", "Negative (-45.00)"], ["positive", "Positive (45.00)"]] as [CsvOutflow, string][]).map(([val, label]) => (
                 <div key={val} onClick={() => setCsvOutflow(val)}
                   style={{ flex: 1, padding: "6px 0", textAlign: "center", cursor: "pointer", borderRadius: "4px", fontSize: "12px", background: csvOutflow === val ? T.blue : "transparent", color: csvOutflow === val ? T.bg : T.text2, fontWeight: csvOutflow === val ? "700" : "400" }}>
                   {label}
@@ -3030,12 +3042,12 @@ results.push({ section: "Fixed Bills", color: T.blue, name: item.name, detail: i
 }
 buckets.filter(b => b.id !== "bills" && b.amount > 0).forEach(b => {
 if (b.label.toLowerCase().includes(q) || b.items.some(i => i.name.toLowerCase().includes(q))) {
-results.push({ section: "Discretionary / Reserves", color: b.color, name: b.label, detail: b.note || b.items.map(i => i.name).join(", "), amount: b.amount, monthly: true });
+results.push({ section: "Discretionary / Reserves", color: b.color, name: b.label, detail: b.items.map(i => i.name).join(", "), amount: b.amount, monthly: true });
 }
 });
 debts.forEach(m => {
 if (m.name.toLowerCase().includes(q)) {
-results.push({ section: "Medical", color: "#FF6B9D", name: m.name, detail: m.note || (m.open ? "Balance growing" : "Fixed balance"), amount: m.balance, monthly: false, extra: m.monthly > 0 ? `${fmt(m.monthly)}/mo payment` : "No scheduled payment" });
+results.push({ section: "Medical", color: "#FF6B9D", name: m.name, detail: m.note || (m.grows ? "Balance growing" : "Fixed balance"), amount: m.balance, monthly: false, extra: m.monthly > 0 ? `${fmt(m.monthly)}/mo payment` : "No scheduled payment" });
 }
 });
 return (
@@ -3087,7 +3099,7 @@ return (
           return primaryPayday - today.getDate();
         } else {
           const paydayNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, primaryPayday);
-          return Math.ceil((paydayNextMonth - today) / (1000 * 60 * 60 * 24));
+          return Math.ceil((paydayNextMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         }
       })();
       const isPayday = today.getDate() === primaryPayday;
@@ -3109,10 +3121,10 @@ return (
       const leftover = Math.max(0, totalIncomeCfg - fixedFlowTotal - discFlowTotal - reservesTotal - debtPaymentTotal);
       const treeDenom = totalIncomeCfg > 0 ? totalIncomeCfg : 1;
 
-      const kpiLbl = { fontSize: "12px", color: T.text3, letterSpacing: "0.12em", textTransform: "uppercase" };
-      const kpiAmt = { fontSize: "21px", fontWeight: "700", lineHeight: 1 };
-      const kpiSub = { fontSize: "12px", color: T.text1, marginTop: "4px" };
-      const kpiCard = { flex: "1 0 0", marginBottom: 0, padding: "12px 14px", boxSizing: "border-box" };
+      const kpiLbl: CSSProperties = { fontSize: "12px", color: T.text3, letterSpacing: "0.12em", textTransform: "uppercase" };
+      const kpiAmt: CSSProperties = { fontSize: "21px", fontWeight: "700", lineHeight: 1 };
+      const kpiSub: CSSProperties = { fontSize: "12px", color: T.text1, marginTop: "4px" };
+      const kpiCard: CSSProperties = { flex: "1 0 0", marginBottom: 0, padding: "12px 14px", boxSizing: "border-box" };
 
       const isB = OVERVIEW_LAYOUT === "B";
 
@@ -3140,12 +3152,12 @@ return (
               const miniColorMap = { Income: "#7ED4A0" };
               flowItems.forEach(f => { miniColorMap[f.label] = f.color; });
 
-              const miniLayout = d3Sankey()
+              const miniLayout = d3Sankey<FlowNode, {}>()
                 .nodeId(d => d.id)
                 .nodeWidth(isB ? 14 : 10)
                 .nodePadding(3)
                 .extent([[4, 0], [svgWidth - 4, svgHeight]])
-                ({ nodes: miniNodes.map(d => ({ ...d })), links: miniLinks.map(d => ({ ...d })) });
+                ({ nodes: miniNodes.map(d => ({ ...d })), links: miniLinks.map(d => ({ ...d })) }) as FlowGraph;
 
               // The Income "node" is rendered as an HTML block (below) so its amount label
               // stays a real, fixed pixel size. Collapse its SVG node to the left edge so
@@ -3844,7 +3856,8 @@ return (
       );
     })()}
     {(() => {
-      const RESERVE_BUCKETS = buckets.filter(b => ["bill006", "bill007", "bill008", "bill009", "bill011", "bill012", "bill010"].includes(b.id) && b.amount > 0);
+      // monthly is filled in just below; bg is read by the card but never set.
+      const RESERVE_BUCKETS: (Bucket & { monthly?: number; bg?: string })[] = buckets.filter(b => ["bill006", "bill007", "bill008", "bill009", "bill011", "bill012", "bill010"].includes(b.id) && b.amount > 0);
       // monthly contribution comes from cfg via reserveMonthly, not hardcoded
       RESERVE_BUCKETS.forEach(b => b.monthly = reserveMonthly[b.id] || b.amount || 0);
       return (
@@ -3925,7 +3938,7 @@ return (
         for (let m = 0; m < 12; m++) {
           if (y === setupYear && m < setupMonth) continue;
           if (y > year || (y === year && m > month)) break;
-          const d = data[`${y}-${m}`] || {};
+          const d: Partial<MonthData> = data[`${y}-${m}`] || {};
           histCols.forEach(c => {
             bals[c.id] = Math.round((bals[c.id] + (reserveMonthly[c.id] || 0) - ((d.spent && d.spent[c.id]) || 0)) * 100) / 100;
           });
@@ -4079,7 +4092,7 @@ return (
                           <div style={cs.lbl}>Payoff Projector</div>
                           <div style={{ display: "flex", gap: "8px", marginTop: "8px", alignItems: "center" }}>
                             <span style={{ fontSize: "12px", color: T.text2 }}>Scenario: pay</span>
-                            <input type="number" placeholder={debt.monthlyPrincipal}
+                            <input type="number" placeholder={String(debt.monthlyPrincipal ?? "")}
                               value={projMonthly[debt.id] || ""}
                               onChange={e => setProjectMonthly(p => ({ ...p, [debt.id]: parseFloat(e.target.value) || 0 }))}
                               style={{ ...cs.inp, width: "90px", fontSize: "12px" }} />
@@ -4132,7 +4145,7 @@ return (
                           <div style={{ flex: "1 1 150px", maxWidth: "300px", minWidth: "150px" }}>
                             <div style={{ ...cs.lbl, marginBottom: "4px" }}>Update Payment (Monthly)</div>
                             <div style={{ display: "flex", gap: "6px" }}>
-                              <input type="number" placeholder={debt.monthly}
+                              <input type="number" placeholder={String(debt.monthly ?? "")}
                                 value={debtInputs[debt.id + "-mo"] || ""}
                                 onChange={e => setDebtInputs(p => ({ ...p, [debt.id + "-mo"]: e.target.value }))}
                                 style={{ ...cs.inp, flex: 1, fontSize: "12px", minWidth: 0 }} />
@@ -4178,7 +4191,7 @@ return (
       <div style={{ fontSize: "13px", fontWeight: "700", color: T.text1, marginBottom: "4px" }}>Appearance</div>
       <div style={{ fontSize: "12px", color: T.text3, marginBottom: "14px" }}>Choose dark, light, or match your device setting.</div>
       <div style={{ display: "flex", gap: "0", border: "1px solid " + T.bord, borderRadius: "4px", overflow: "hidden" }}>
-        {[["dark", "Dark", "dark_mode"], ["light", "Light", "light_mode"], ["system", "System", "settings_brightness"]].map(function(opt) {
+        {([["dark", "Dark", "dark_mode"], ["light", "Light", "light_mode"], ["system", "System", "settings_brightness"]] as [ThemePref, string, string][]).map(function(opt) {
           var val = opt[0], label = opt[1], icon = opt[2];
           var active = themePref === val;
           return <button key={val} onClick={function() { setThemePref(val); saveTheme(val); }} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", padding: "10px 8px", fontSize: "12px", fontWeight: active ? "700" : "400", color: active ? T.blue : T.text3, background: active ? T.blueBg : "transparent", border: "none", cursor: "pointer", fontFamily: "DM Mono, monospace", minHeight: "44px", borderRight: val !== "system" ? "1px solid " + T.bord : "none" }}>
@@ -4199,16 +4212,17 @@ return (
       {/* Export CSV */}
       <button onClick={() => {
         // -- Build CSV from localStorage --
-        const c = loadConfig() || {};
+        // BudgetTracker only renders once a config exists, so the {} is a guard, not a real case.
+        const c = (loadConfig() || {}) as BudgetConfig;
         const d = loadData() || {};
         const db = loadDebts() || [];
-        const lines = [];
-        const esc = v => {
+        const lines: string[] = [];
+        const esc = (v: unknown) => {
           const s = String(v == null ? "" : v);
           return (s.indexOf(",") >= 0 || s.indexOf('"') >= 0 || s.indexOf("\n") >= 0)
             ? '"' + s.replace(/"/g, '""') + '"' : s;
         };
-        const row = function() { lines.push(Array.prototype.map.call(arguments, esc).join(",")); };
+        const row = (...cells: unknown[]) => { lines.push(cells.map(esc).join(",")); };
 
         // -- INCOME --
         lines.push("## INCOME");
@@ -4336,7 +4350,7 @@ return (
           var reader = new FileReader();
           reader.onload = function(e) {
             try {
-              var text = e.target.result;
+              var text = e.target.result as string; // readAsText always yields a string
               var sections = parseCSVSections(text);
 
               // -- Validate required sections --
@@ -4377,11 +4391,11 @@ return (
               var parsedPayday = parseInt(metaMap["Primary Payday"], 10) || 1;
 
               // -- Parse INCOME --
-              var incomes = dataRows("INCOME").map(function(r) {
+              var incomes: Income[] = dataRows("INCOME").map(function(r) {
                 return {
                   label: (r[0] || "").trim() || "Income",
                   perPaycheck: num(r[1]),
-                  frequency: (r[2] || "monthly").trim(),
+                  frequency: (r[2] || "monthly").trim() as PayFrequency,
                   payday: parseInt(r[3], 10) || 1,
                   netPay: num(r[4]),
                 };
@@ -4401,12 +4415,12 @@ return (
               });
 
               // -- Parse FIXED BILLS --
-              var billItems = dataRows("FIXED BILLS").map(function(r) {
+              var billItems: BillItem[] = dataRows("FIXED BILLS").map(function(r) {
                 return {
                   name: (r[0] || "").trim(),
                   amt: num(r[1]),
                   day: Math.min(28, Math.max(1, parseInt(r[2], 10) || 1)),
-                  category: (r[3] || "Other").trim(),
+                  category: (r[3] || "Other").trim() as BillCategory,
                   note: (r[4] || "").trim(),
                   id: (r[5] || "").trim() || newBillId(),
                 };
@@ -4431,9 +4445,9 @@ return (
               // -- Build config --
               var newCfg = {
                 incomes: incomes,
-                buckets: [
+                buckets: ([
                   { id: "bills", label: "Fixed Bills", amount: billsAmt, color: T.blue, items: billItems },
-                ].concat(
+                ] as Bucket[]).concat(
                   discBuckets.map(function(b) { return { id: b.id, label: b.label, amount: b.amount, color: b.color, items: [{ name: b.label, amt: b.amount }] }; }),
                   resBuckets.map(function(b) { return { id: b.id, label: b.label, amount: b.amount, color: b.color, items: [{ name: b.label, amt: b.amount }] }; })
                 ),
@@ -4443,11 +4457,11 @@ return (
               };
 
               // -- Parse DEBTS --
-              var newDebts = dataRows("DEBTS").map(function(r, i) {
+              var newDebts: Debt[] = dataRows("DEBTS").map(function(r, i) {
                 return {
                   id: "d-imp-" + Date.now() + "-" + i,
                   name: (r[0] || "").trim(),
-                  type: (r[1] || "other").trim(),
+                  type: (r[1] || "other").trim() as DebtType,
                   balance: num(r[2]),
                   apr: num(r[3]),
                   monthly: num(r[4]),
@@ -4457,7 +4471,7 @@ return (
                   grows: (r[8] || "").trim().toLowerCase() === "yes",
                   note: (r[9] || "").trim(),
                   linkedBucketId: (r[10] || "").trim() || null,
-                  linkedType: (r[11] || "manual").trim(),
+                  linkedType: (r[11] || "manual").trim() as DebtLinkType,
                 };
               }).filter(function(d) { return d.name; });
               newDebts = resolveFixedDebtLinks(billItems, newDebts);
@@ -4637,7 +4651,7 @@ return (
     const leftover = Math.max(0, rawLeftover);
     const total = totalIncomeCfg || 1;
 
-    const categories = [
+    const categories: { key: string; label: string; value: number; color: string; items: { label: string; value: number; color: string; group?: string }[] }[] = [
       { key: "fixed", label: "Fixed", value: fixedCommitted, color: T.blue, items: fixedBillItems.map(item => ({ label: item.name, value: item.amt, color: T.blue, group: item.category || "Other" })) },
       { key: "discretionary", label: "Discretionary", value: discBudget, color: "#FFB347", items: allDiscBuckets.filter(b => !linkedDiscIds.has(b.id)).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
       { key: "reserves", label: "Reserves", value: reservesTotal, color: "#B8A9FF", items: buckets.filter(b => RESERVE_IDS_LIST.includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
@@ -4695,12 +4709,12 @@ return (
     const nodeWidth = 16;
     const nodePadding = 14;
 
-    const layout = d3Sankey()
+    const layout = d3Sankey<FlowNode, {}>()
       .nodeId(d => d.id)
       .nodeWidth(nodeWidth)
       .nodePadding(nodePadding)
       .extent([[18, 24], [viewWidth - labelPad, viewHeight - 24]])
-      ({ nodes: sankeyNodes.map(d => ({ ...d })), links: sankeyLinks.map(d => ({ ...d })) });
+      ({ nodes: sankeyNodes.map(d => ({ ...d })), links: sankeyLinks.map(d => ({ ...d })) }) as FlowGraph;
 
     const maxDepth = layout.nodes.reduce((m, n) => Math.max(m, n.depth), 0);
     const labelForId = (id) => (meta[id] && meta[id].label) || "";

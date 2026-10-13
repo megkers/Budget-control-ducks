@@ -1,10 +1,10 @@
 import glob
-# App.jsx first so position checks (e.g. WizardShell before OnboardingWizard)
-# still compare within App.jsx; helper modules are appended after it.
+# App.tsx first so position checks (e.g. WizardShell before OnboardingWizard)
+# still compare within App.tsx; helper modules are appended after it.
 # agent.ts is read separately below as `agent`; main.tsx is only ASCII-checked.
-SRC_FILES = ['src/App.jsx'] + sorted(
+SRC_FILES = ['src/App.tsx'] + sorted(
     p for ext in ('js', 'jsx', 'ts', 'tsx') for p in glob.glob('src/*.' + ext)
-    if p not in ('src/App.jsx', 'src/agent.ts', 'src/main.tsx'))
+    if p not in ('src/App.tsx', 'src/agent.ts', 'src/main.tsx'))
 src_bytes = {}
 for p in SRC_FILES:
     with open(p, 'rb') as f:

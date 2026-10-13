@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import Root from './App.jsx';
+import Root from './App.js';
 
 // #root is in index.html, so this is never null.
 ReactDOM.createRoot(document.getElementById('root')!).render(
