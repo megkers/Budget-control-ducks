@@ -4,7 +4,8 @@ import type { BillDraft, Bucket } from "./types.js";
 // ------------
 // Bill template for wizard
 // ------------
-export const BILL_TEMPLATE: BillDraft[] = [
+// The template rows have no id; each copy gets one with newBillId().
+export const BILL_TEMPLATE: Omit<BillDraft, "id">[] = [
 { name: "Rent / Mortgage",          amt: "", day: "", note: "",   category: "Housing" },
 { name: "HOA / Condo fees",         amt: "", day: "", note: "",   category: "Housing" },
 { name: "Home insurance",           amt: "", day: "", note: "",   category: "Housing" },

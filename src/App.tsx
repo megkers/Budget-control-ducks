@@ -11,16 +11,22 @@ import { resolveFixedDebtLinks, buildDebtWindow } from "./debts.js";
 import { cropNormalize, cropHit, cropApply } from "./crop.js";
 import { fmt, ordinal } from "./format.js";
 import { loadTheme, saveTheme, THEMES, resolveTheme } from "./theme.js";
-import type { BucketId, BudgetConfig, BudgetData, Bucket, Income, PayFrequency, MonthData, Debt, DebtType, DebtLinkType, BillItem, BillDraft, BillCategory, BucketItem, ThemePref, ThemeTokens, CsvOutflow, CsvColumnMapping, ImportReviewRow } from "./types.js";
+import type { BucketId, BudgetConfig, BudgetData, Bucket, Income, PayFrequency, MonthData, Debt, DebtType, DebtLinkType, BillItem, BillDraft, BillCategory, BucketItem, ThemePref, ThemeTokens, CsvOutflow, CsvColumnMapping, ImportReviewRow, Transaction } from "./types.js";
+import type { CropMode, NormRect } from "./crop.js";
 import type { ExtractedRow } from "./agent.js";
 
 // Money Flow charts (d3-sankey). Nodes are identified by id. Links go in with
 // source/target as node ids; once the layout runs, d3 replaces both with the
 // node objects themselves, which is the shape FlowGraph describes.
 type FlowNode = { id: string };
-type LaidNode = SankeyNode<FlowNode, {}>;
-type LaidLink = SankeyLink<FlowNode, {}> & { source: LaidNode; target: LaidNode };
+// d3 leaves positions optional because they are unset before layout; FlowGraph
+// only ever describes a finished layout, where they are always filled in.
+type LaidNode = SankeyNode<FlowNode, {}> & { x0: number; x1: number; y0: number; y1: number; depth: number };
+type LaidLink = SankeyLink<FlowNode, {}> & { source: LaidNode; target: LaidNode; y0: number; y1: number; width: number };
 type FlowGraph = { nodes: LaidNode[]; links: LaidLink[] };
+// A fixed bill with a known due day, as the Fixed tab lists them.
+type DatedItem = BucketItem & { day: number };
+
 // One leaf of the Money Flow breakdown. group sub-divides fixed bills by category.
 type FlowItem = { label: string; value: number; color: string; group?: string };
 
@@ -59,11 +65,11 @@ bill013: (color) => <span className="material-symbols-outlined" style={{ fontSiz
 // ------------
 export default function Root() {
 const [ready, setReady] = useState(() => !!loadConfig());
-const [rerunConfig, setRerunConfig] = useState(null);
+const [rerunConfig, setRerunConfig] = useState<BudgetConfig | null>(null);
 // For a Settings CSV import: parsed debts + spend data are held in memory and
 // only committed at wizard Launch, so an existing budget isn't touched on cancel.
-const [rerunDebts, setRerunDebts] = useState(null);
-const [pendingData, setPendingData] = useState(null);
+const [rerunDebts, setRerunDebts] = useState<Debt[] | null>(null);
+const [pendingData, setPendingData] = useState<BudgetData | null>(null);
 // Increment on every wizard completion so BudgetTracker remounts and re-reads cfg
 const [cfgVersion, setCfgVersion] = useState(0);
 
@@ -122,8 +128,8 @@ return (
 // ------------
 function SetupGate({ onDone, onBack, initialConfig, initialDebts }: SetupProps) {
 const [mode, setMode] = useState(initialConfig ? "wizard" : null);
-const [csvConfig, setCsvConfig] = useState(null);
-const [csvSummary, setCsvSummary] = useState(null);
+const [csvConfig, setCsvConfig] = useState<BudgetConfig | null>(null);
+const [csvSummary, setCsvSummary] = useState<ImportCounts | null>(null);
 if (mode === "wizard") return <OnboardingWizard key={Date.now()} initialConfig={csvConfig || initialConfig} initialDebts={initialDebts} onDone={onDone} onBack={() => { if (onBack) onBack(); else { setCsvConfig(null); setMode(null); } }} />;
 return (
 <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "DM Mono, monospace" }}>
@@ -151,7 +157,7 @@ Import from CSV
   var reader = new FileReader();
   reader.onload = function(e) {
     try {
-      var text = e.target.result as string; // readAsText always yields a string
+      var text = e.target!.result as string; // readAsText always yields a string
       var sections = parseCSVSections(text);
 
       // Validate
@@ -180,7 +186,7 @@ Import from CSV
       var parsedPayday = parseInt(metaMap["Primary Payday"], 10) || 1;
 
       // -- Parse INCOME --
-      var incArr: Income[] = dataRows("INCOME").map(function(r) {
+      var incArr: (Income & { perPaycheck: number })[] = dataRows("INCOME").map(function(r) {
         return {
           label: (r[0] || "").trim() || "Income",
           perPaycheck: num(r[1]),
@@ -283,7 +289,7 @@ Import from CSV
         var k = yr + "-" + mi;
         if (!newData[k]) newData[k] = { spent: {} };
         if (!newData[k].reserveTransactions) newData[k].reserveTransactions = [];
-        newData[k].reserveTransactions.push({
+        newData[k].reserveTransactions!.push({
           id: "tx-imp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
           date: (r[1] || "").trim(), merchant: (r[2] || "").trim(), amount: num(r[3]),
           reserveId: (r[4] || "").trim() || null, category: (r[5] || "").trim() || null,
@@ -304,7 +310,7 @@ Import from CSV
       setCsvSummary({ income: incArr.length, bills: billItems.length, disc: discBkts.length, reserves: resBkts.length, debts: newDebts.length });
 
     } catch (err) {
-      window.alert("Failed to read CSV: " + err.message);
+      window.alert("Failed to read CSV: " + (err as Error).message);
     }
   };
   reader.readAsText(file);
@@ -449,7 +455,7 @@ const rAmt = resAmt || 0;
 const billsPct = totalIncome > 0 ? Math.min(100, Math.round(bAmt / totalIncome * 1000) / 10) : 0;
 const discPct  = totalIncome > 0 ? Math.min(100 - billsPct, Math.round(dAmt / totalIncome * 1000) / 10) : 0;
 const resPct   = totalIncome > 0 ? Math.min(100 - billsPct - discPct, Math.round(rAmt / totalIncome * 1000) / 10) : 0;
-const scrollRef = useRef(null);
+const scrollRef = useRef<HTMLDivElement>(null);
 useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [stepIdx]);
 return (
 <div style={{ minHeight: "100vh", background: T.bg, color: T.text1, fontFamily: "DM Mono, monospace", display: "flex", flexDirection: "column" }}>
@@ -541,7 +547,8 @@ return (
 // ------------
 // OnboardingWizard
 // ------------
-function OnboardingWizard({ onDone, onBack, initialConfig, initialDebts }: SetupProps) {
+// SetupGate always hands the wizard a working Back, unlike its own optional one.
+function OnboardingWizard({ onDone, onBack, initialConfig, initialDebts }: Omit<SetupProps, "onBack"> & { onBack: () => void }) {
 const STEPS = ["income", "howbudgets", "bills", "discretionary", "reserves", "debt", "review"];
 const [step, setStep] = useState("income");
 const stepIdx = STEPS.indexOf(step);
@@ -789,7 +796,7 @@ Since your payday shifts each week, we calculate your monthly total automaticall
 <div>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "2px" }}>Monthly total</div>
 <div style={{ fontSize: "22px", fontWeight: "700", color: T.blue }}>{fmt0(monthly)}</div>
-<div style={{ fontSize: "12px", color: T.text3, marginTop: "2px" }}>{(FREQ_OPTS.find(f => f.value === inc.frequency) && FREQ_OPTS.find(f => f.value === inc.frequency).note)}</div>
+<div style={{ fontSize: "12px", color: T.text3, marginTop: "2px" }}>{FREQ_OPTS.find(f => f.value === inc.frequency)?.note}</div>
 </div>
 <span className="material-symbols-outlined" style={{ fontSize: "36px", color: T.blue, opacity: 0.4 }}>payments</span>
 </div>
@@ -1328,7 +1335,7 @@ const reserveMonthly: Record<BucketId, number> = {};
 const [year, setYear] = useState(iy);
 const [month, setMonth] = useState(im);
 const [tab, setTab] = useState("overview");
-const [expanded, setExpanded] = useState(null);
+const [expanded, setExpanded] = useState<BucketId | null>(null);
 const [data, setData] = useState(() => loadData() || getDefaultData());
 const [inputs, setInputs] = useState<Record<BucketId, string>>({});
 const [debts, setDebts] = useState(() => loadDebts() || []);
@@ -1345,7 +1352,7 @@ const [txReserve, setTxReserve] = useState("bill008");
 // user hits Submit on the review step (single-session; leftovers are discarded).
 const [csvStep, setCsvStep] = useState<CsvStep>("upload");  // "upload" | "map" | "review"
 const [csvFileName, setCsvFileName] = useState("");
-const [csvHeaders, setCsvHeaders] = useState([]);
+const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
 const [csvRawRows, setCsvRawRows] = useState<string[][]>([]);
 const [csvMapping, setCsvMapping] = useState({ date: -1, amount: -1, description: -1, debit: -1, credit: -1 });
 const [csvOutflow, setCsvOutflow] = useState<CsvOutflow>("negative"); // single-amount sign meaning money out
@@ -1371,16 +1378,16 @@ const [shotImg, setShotImg] = useState<HTMLImageElement | null>(null);
 const [shotRect, setShotRect] = useState({ x: 0.02, y: 0.15, w: 0.96, h: 0.8 });
 const [shotBusy, setShotBusy] = useState(false);
 const [shotError, setShotError] = useState("");
-const cropRef = useRef(null);
-const cropStart = useRef(null);
+const cropRef = useRef<HTMLDivElement>(null);
+const cropStart = useRef<{ mode: CropMode; nx: number; ny: number; rect0: NormRect } | null>(null);
 // The amount cell shows 2 decimals at rest, but reformatting mid-keystroke
 // would fight the person typing (a trailing "0" would vanish as it was typed),
 // so the raw text is held here while one cell has focus.
-const [amtDraft, setAmtDraft] = useState(null); // { rowId, text } | null
+const [amtDraft, setAmtDraft] = useState<{ rowId: string; text: string } | null>(null);
 // Data URL of exactly the pixels an extraction would send. Built from the same
 // function that builds the payload, so it cannot drift from the real thing.
-const [shotPreview, setShotPreview] = useState(null);
-const [expandedReserve, setExpandedReserve] = useState(null);
+const [shotPreview, setShotPreview] = useState<string | null>(null);
+const [expandedReserve, setExpandedReserve] = useState<BucketId | null>(null);
 const [search, setSearch] = useState("");
 const [showSearch, setShowSearch] = useState(false);
 
@@ -1398,15 +1405,15 @@ const [debtInputs, setDebtInputs] = useState<Record<string, string>>({});
 const [projMonthly, setProjectMonthly] = useState<Record<string, number>>({});
 const [showFlowInfo, setShowFlowInfo] = useState(false);
 const [showDebtInfo, setShowDebtInfo] = useState(false);
-const [debtChartHover, setDebtChartHover] = useState(null);
-const [moneyFlowHovered, setMoneyFlowHovered] = useState(null);
-const [moneyFlowTooltip, setMoneyFlowTooltip] = useState(null);
-const [flowLinkHover, setFlowLinkHover] = useState(null);
+const [debtChartHover, setDebtChartHover] = useState<number | null>(null);
+const [moneyFlowHovered, setMoneyFlowHovered] = useState<string | null>(null);
+const [moneyFlowTooltip, setMoneyFlowTooltip] = useState<{ x: number; y: number; label: string; value: number } | null>(null);
+const [flowLinkHover, setFlowLinkHover] = useState<number | null>(null);
 // editModal: null | "bills" | "disc" | "reserves" | "debt" | "income"
 const [editModal, setEditModal] = useState<EditPanel | null>(null);
 // Parsed-but-not-yet-applied CSV import: { counts, payload }. Shows the CSV
 // Loaded card; on close the pre-filled wizard opens (nothing saved until Launch).
-const [importPreview, setImportPreview] = useState(null);
+const [importPreview, setImportPreview] = useState<{ counts: ImportCounts; payload: CsvImport } | null>(null);
 // Local edit state - populated when a modal opens
 const [editBills, setEditBills] = useState<BillDraft[]>([]);
 const [editDisc, setEditDisc] = useState<BucketDraft[]>([]);
@@ -1442,7 +1449,7 @@ function getReserveBal(id: BucketId) {
   return Math.round(bal * 100) / 100;
 }
 
-function reassignTransaction(txId: string, newBucketId: BucketId) {
+function reassignTransaction(txId: string, newBucketId: BucketId | null) {
 setTransactions(t => t.map(tx =>
 tx.id === txId ? { ...tx, bucketId: newBucketId || null } : tx
 ));
@@ -1508,7 +1515,7 @@ if (!file) return;
 const reader = new FileReader();
 reader.onload = e => {
 try {
-const parsed = parseFlatCSV(String(e.target.result || ""));
+const parsed = parseFlatCSV(String(e.target!.result || ""));
 if (!parsed.headers.length || !parsed.rows.length) { window.alert("That file has no readable rows."); return; }
 setCsvFileName(file.name || "import.csv");
 setCsvHeaders(parsed.headers);
@@ -1523,7 +1530,7 @@ setCsvOutflow(outflow);
 const guessConfident = mapping.date !== -1 && mapping.description !== -1 && (mapping.amount !== -1 || (mapping.debit !== -1));
 if (remembered || guessConfident) { applyMapping(parsed.rows, mapping, outflow); setCsvStep("review"); }
 else { setCsvStep("map"); }
-} catch (err) { window.alert("Failed to read CSV: " + err.message); }
+} catch (err) { window.alert("Failed to read CSV: " + (err as Error).message); }
 };
 reader.readAsText(file);
 }
@@ -1676,7 +1683,7 @@ function aiContext() {
 return {
 buckets: buckets.filter(b => DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id))
 .map(b => ({ id: b.id, label: b.label })),
-examples: transactions.filter(t => t.description && t.bucketId).slice(-20)
+examples: transactions.filter((t): t is Transaction & { bucketId: BucketId } => !!(t.description && t.bucketId)).slice(-20)
 .map(t => ({ description: t.description, bucketId: t.bucketId })),
 };
 }
@@ -1751,7 +1758,7 @@ runAiSuggest(res.out);
 // (discarded on close). Each committed row adds to spent[bucketId] in the month
 // of its date, and becomes a confirmed source:"csv" transaction record.
 function commitCsv() {
-const ready = csvReviewRows.filter(r => r.bucketId);
+const ready = csvReviewRows.filter((r): r is ImportReviewRow & { bucketId: BucketId } => !!r.bucketId);
 if (!ready.length) return;
 const recs = ready.map(r => toTxnRecord({
 id: newTxnId(), date: r.date, merchant: r.description, amount: r.amount,
@@ -2396,7 +2403,7 @@ const renderLogSpend = () => {
           <span style={{ fontSize: "13px", fontWeight: "700", color: T.text1 }}>Drop a .csv here or tap to choose</span>
           <span style={{ fontSize: "11px", color: T.text3, lineHeight: "1.5" }}>Export from your bank or credit card. We read Date, Description and Amount, and ask about any column we cannot guess.</span>
           <input type="file" accept=".csv,text/csv" style={{ display: "none" }}
-            onChange={e => { if (e.target.files[0]) handleCsvFile(e.target.files[0]); e.target.value = ""; }} />
+            onChange={e => { if (e.target.files![0]) handleCsvFile(e.target.files![0]); e.target.value = ""; }} />
         </label>
         {/* Screenshot capture. Shown whether or not a key is connected: hiding
             it meant nobody discovered the feature, and the version without a
@@ -2414,7 +2421,7 @@ const renderLogSpend = () => {
               </div>
             </div>
             <input type="file" accept="image/*" style={{ display: "none" }}
-              onChange={e => { if (e.target.files[0]) handleScreenshotFile(e.target.files[0]); e.target.value = ""; }} />
+              onChange={e => { if (e.target.files![0]) handleScreenshotFile(e.target.files![0]); e.target.value = ""; }} />
           </label>
         ) : (
           <button onClick={() => { setKeyInput(""); setKeyStatus("idle"); setKeyError(""); setKeyModalOpen(true); }}
@@ -2454,7 +2461,7 @@ const renderLogSpend = () => {
         <div style={{ display: "flex", justifyContent: "center" }}>
         <div ref={cropRef}
           onPointerDown={e => {
-            const r = cropRef.current.getBoundingClientRect();
+            const r = cropRef.current!.getBoundingClientRect();
             const nx = (e.clientX - r.left) / r.width;
             const ny = (e.clientY - r.top) / r.height;
             // A finger is about 44px wide, so the grab zone is sized in real
@@ -2468,7 +2475,7 @@ const renderLogSpend = () => {
           onPointerMove={e => {
             const c = cropStart.current;
             if (!c) return;
-            const r = cropRef.current.getBoundingClientRect();
+            const r = cropRef.current!.getBoundingClientRect();
             const nx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
             const ny = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
             if (c.mode === "draw") {
@@ -3154,7 +3161,7 @@ return (
       const RESERVE_IDS_LIST = ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"];
       const bankedYTD = RESERVE_IDS_LIST.reduce((s, id) => s + getReserveBal(id), 0);
 
-      const fixedBillItems = ((buckets.find(b => b.id === "bills") && buckets.find(b => b.id === "bills").items) || []).filter(i => i.amt > 0);
+      const fixedBillItems = (buckets.find(b => b.id === "bills")?.items || []).filter(i => i.amt > 0);
       const fixedCommitted = Math.round(fixedBillItems.filter(i => i.note !== "cc").reduce((s, i) => s + i.amt, 0) * 100) / 100;
       const fixedPaidCount = fixedBillItems.filter(i => i.day && i.day <= today.getDate()).length;
 
@@ -3233,7 +3240,7 @@ return (
                       return (
                         <path
                           key={"ml-" + i}
-                          d={miniLinkPath(link)}
+                          d={miniLinkPath(link) ?? undefined}
                           fill="none"
                           stroke={miniColorMap[link.target.id]}
                           strokeWidth={Math.max(4, link.width)}
@@ -3488,7 +3495,7 @@ return (
       {showRef && (() => {
         const linkedBillIds = new Set(debts.filter(d => d.linkedType === "fixed" && d.linkedBucketId).map(d => d.linkedBucketId));
         const linkedDiscIds = new Set(debts.filter(d => d.linkedType === "discretionary" && d.linkedBucketId).map(d => d.linkedBucketId));
-        const refBillItems = ((buckets.find(b => b.id === "bills") && buckets.find(b => b.id === "bills").items) || []).filter(i => i.amt > 0 && i.note !== "cc");
+        const refBillItems = (buckets.find(b => b.id === "bills")?.items || []).filter(i => i.amt > 0 && i.note !== "cc");
         const refDiscBuckets = buckets.filter(b => ["bill001","bill002","bill003","bill004","bill005"].includes(b.id) && b.amount > 0);
         const refGroups = [
           { group: "Fixed", color: T.blue, items:
@@ -3706,7 +3713,7 @@ return (
       const billsBucket = buckets.find(b => b.id === "bills");
       const fixedBudget = billsBucket ? billsBucket.amount : 0;
       const allItems = ((billsBucket && billsBucket.items) || []).filter(i => i.amt > 0 || i.note === "cc");
-      const knownItems = [...allItems].filter(i => i.day).sort((a,b) => a.day - b.day);
+      const knownItems = [...allItems].filter((i): i is DatedItem => !!i.day).sort((a,b) => a.day - b.day);
       const unknownItems = allItems.filter(i => !i.day);
       let running = 0;
       return (
@@ -3726,7 +3733,7 @@ return (
           {(() => {
             const upcomingItems = knownItems.filter(item => !isBillPaid(item.day));
             const paidItems = knownItems.filter(item => isBillPaid(item.day));
-            const renderItem = (item: BucketItem, i: number, arr: BucketItem[]) => {
+            const renderItem = (item: DatedItem, i: number, arr: DatedItem[]) => {
               const isCC = item.note === "cc";
               const isEarly = item.day < primaryPayday;
               const paid = isBillPaid(item.day);
@@ -4121,14 +4128,14 @@ return (
                             <span style={{ fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", color: debt.apr === 0 ? T.green : "#FFB347", background: (debt.apr === 0 ? T.green : "#FFB347") + "22", padding: "2px 8px", borderRadius: "4px" }}>
                               {debt.apr === 0 ? "0% interest" : debt.apr + "% APR"}
                             </span>
-                            {debt.escrow > 0 && <span style={{ fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", color: T.text2, background: T.bord, padding: "2px 8px", borderRadius: "4px" }}>incl. {fmt(debt.escrow)} escrow</span>}
+                            {(debt.escrow ?? 0) > 0 && <span style={{ fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", color: T.text2, background: T.bord, padding: "2px 8px", borderRadius: "4px" }}>incl. {fmt(debt.escrow ?? 0)} escrow</span>}
                             {debt.grows && <span style={{ fontSize: "12px", letterSpacing: "0.1em", textTransform: "uppercase", color: "#FF6B9D", background: "#FF6B9D22", padding: "2px 8px", borderRadius: "4px" }}>balance growing</span>}
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>
                           <div style={{ fontSize: "22px", fontWeight: "700", color: T.text1 }}>{fmt(debt.balance, 2)}</div>
                           <div style={{ fontSize: "12px", color: T.text2, marginTop: "2px" }}>{fmt(debt.monthly)}/mo payment</div>
-                          {debt.escrow > 0 && <div style={{ fontSize: "12px", color: T.text2 }}>{fmt(debt.monthlyPrincipal)}/mo to principal</div>}
+                          {(debt.escrow ?? 0) > 0 && <div style={{ fontSize: "12px", color: T.text2 }}>{fmt(debt.monthlyPrincipal)}/mo to principal</div>}
                         </div>
                       </div>
 
@@ -4198,7 +4205,7 @@ return (
                               <button onClick={() => {
                                 const v = parseFloat(debtInputs[debt.id + "-mo"]);
                                 if (!isNaN(v)) {
-                                  setDebts(p => p.map(d => d.id === debt.id ? { ...d, monthly: v, monthlyPrincipal: d.escrow > 0 ? v - d.escrow : v } : d));
+                                  setDebts(p => p.map(d => d.id === debt.id ? { ...d, monthly: v, monthlyPrincipal: (d.escrow ?? 0) > 0 ? v - (d.escrow ?? 0) : v } : d));
                                   setDebtInputs(p => ({ ...p, [debt.id + "-mo"]: "" }));
                                 }
                               }} style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "6px 14px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>Save</button>
@@ -4396,7 +4403,7 @@ return (
           var reader = new FileReader();
           reader.onload = function(e) {
             try {
-              var text = e.target.result as string; // readAsText always yields a string
+              var text = e.target!.result as string; // readAsText always yields a string
               var sections = parseCSVSections(text);
 
               // -- Validate required sections --
@@ -4437,7 +4444,7 @@ return (
               var parsedPayday = parseInt(metaMap["Primary Payday"], 10) || 1;
 
               // -- Parse INCOME --
-              var incomes: Income[] = dataRows("INCOME").map(function(r) {
+              var incomes: (Income & { perPaycheck: number })[] = dataRows("INCOME").map(function(r) {
                 return {
                   label: (r[0] || "").trim() || "Income",
                   perPaycheck: num(r[1]),
@@ -4573,7 +4580,7 @@ return (
                 var k = pm.y + "-" + pm.m;
                 if (!newData[k]) newData[k] = { spent: {} };
                 if (!newData[k].reserveTransactions) newData[k].reserveTransactions = [];
-                newData[k].reserveTransactions.push({
+                newData[k].reserveTransactions!.push({
                   id: "tx-imp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
                   date: (r[1] || "").trim(),
                   merchant: (r[2] || "").trim(),
@@ -4592,7 +4599,7 @@ return (
               });
 
             } catch (err) {
-              window.alert("Failed to import CSV: " + err.message);
+              window.alert("Failed to import CSV: " + (err as Error).message);
             }
           };
           reader.readAsText(file);
@@ -4780,7 +4787,7 @@ return (
         <div style={{ background: T.surf2, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px", overflowX: "auto" }}>
           <svg width={viewWidth} height={viewHeight} viewBox={`0 0 ${viewWidth} ${viewHeight}`} style={{ display: "block", maxWidth: "100%" }}>
             {layout.links.map((link, i) => (
-              <path key={"link-" + i} d={linkPath(link)} fill="none" stroke={colorMap[link.source.id] || T.text3} strokeWidth={Math.max(4, link.width)}
+              <path key={"link-" + i} d={linkPath(link) ?? undefined} fill="none" stroke={colorMap[link.source.id] || T.text3} strokeWidth={Math.max(4, link.width)}
                 strokeOpacity={flowLinkHover != null ? (flowLinkHover === i ? 0.85 : 0.06) : 0.45}
                 style={{ transition: "stroke-opacity 0.15s", cursor: "pointer" }}
                 pointerEvents="stroke"
