@@ -16,11 +16,15 @@ with open('src/agent.ts','rb') as f:
 agent = ab.decode('utf-8')
 with open('src/main.tsx','rb') as f:
     mb = f.read()
+with open('tsconfig.json') as f:
+    tsconfig = f.read()
 checks = [
-    # -- Babel / ASCII safety --
+    # -- ASCII safety (hard rule 1) --
     ('Non-ASCII bytes',              sum(1 for x in b if x > 127) == 0),
     ('Non-ASCII bytes (agent.ts)',   sum(1 for x in ab if x > 127) == 0),
     ('Non-ASCII bytes (main.tsx)',   sum(1 for x in mb if x > 127) == 0),
+    # -- TypeScript (#39) --
+    ('tsconfig has strict on',       '"strict": true' in tsconfig),
     # -- AI assistant --
     ('Agent key storage key',        'budgetApiKey' in agent),
     ('Agent SDK lazy loaded',        'await import("@anthropic-ai/sdk")' in agent),
@@ -67,8 +71,6 @@ checks = [
     ('No analytics script tag',      'googletagmanager' not in code and 'plausible.io' not in code),
     ('Uses ?. optional chaining',    '?.' in code),
     ('Uses ?? nullish coalescing',   '??' in code),
-    ('No obj-literal dot pattern',   '|| {items:[]}).items' not in code),
-    ('No template-fn in JSX',        'autopay ${ordinal' not in code),
     # -- Legacy hardcodes removed --
     ('No NEPHEW_SAVINGS_RATE',       'NEPHEW_SAVINGS_RATE' not in code),
     ('No getNephewSavingsBal',       'getNephewSavingsBal' not in code),
