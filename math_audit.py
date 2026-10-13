@@ -586,6 +586,45 @@ out, n = merge_ai([row("a")], [{"id": 7, "bucketId": "groceries", "confidence": 
 check("Non-string id is ignored", out[0]["bucketId"] is None)
 
 # ========================================================
+# CSV CR / DR MARKERS (#51)
+#   Runs the real csvSpendAmount from src/csv.ts under Node (24+ strips
+#   types natively). Positive result = spend, negative = refund.
+# ========================================================
+print("\n=== CSV CR / DR markers ===")
+import subprocess
+CSV_CASES = [
+    # (cell, outflow, expected)
+    ("45.00 CR",   "positive", -45), ("45.00 CR",   "negative", -45),
+    ("45.00 DR",   "positive",  45), ("45.00 DR",   "negative",  45),
+    ("45.00 cr",   "positive", -45), ("45.00 dr",   "negative",  45),
+    ("(45.00) CR", "positive", -45), ("(45.00) CR", "negative", -45),
+    ("-45.00 DR",  "negative",  45), ("CR 45.00",   "positive", -45),
+    ("45.00CR",    "positive", -45), ("$1,234.56 DR", "negative", 1234.56),
+    # No marker: unchanged behavior
+    ("45.00",      "positive",  45), ("45.00",      "negative", -45),
+    ("-45.00",     "positive", -45), ("-45.00",     "negative",  45),
+    ("(45.00)",    "negative",  45), ("",           "negative", None),
+    ("0.00 CR",    "negative", None), ("CR",        "positive", None),
+]
+import pathlib
+CSV_URL = pathlib.Path(SRC_DIR, 'csv.ts').resolve().as_uri()
+script = (
+    "import { csvSpendAmount } from '" + CSV_URL + "';"
+    "const cases = JSON.parse(process.argv[1]);"
+    "console.log(JSON.stringify(cases.map(c => csvSpendAmount(c[0], c[1]))));"
+)
+try:
+    res = subprocess.run(["node", "--input-type=module", "-e", script, json.dumps(CSV_CASES)],
+                         capture_output=True, text=True, timeout=30)
+    got = json.loads(res.stdout) if res.returncode == 0 else None
+    err = res.stderr.strip().splitlines()[-1] if res.stderr.strip() else ""
+except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+    got, err = None, str(e)
+check("Node runs csv.ts", got is not None, err)
+for (cell, outflow, want), have in zip(CSV_CASES, got or []):
+    check(f"csvSpendAmount({cell!r}, {outflow}) = {want}", have == want, f"got {have}")
+
+# ========================================================
 # SUMMARY
 # ========================================================
 print(f"\n{'='*50}")
