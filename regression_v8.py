@@ -1,6 +1,16 @@
-with open('src/App.jsx','rb') as f:
-    b = f.read()
-code = b.decode('utf-8')
+import glob
+# App.jsx first so position checks (e.g. WizardShell before OnboardingWizard)
+# still compare within App.jsx; helper modules are appended after it.
+# agent.js is read separately below as `agent`.
+SRC_FILES = ['src/App.jsx'] + sorted(
+    p for p in glob.glob('src/*.js') + glob.glob('src/*.jsx')
+    if p not in ('src/App.jsx', 'src/agent.js', 'src/main.jsx'))
+src_bytes = {}
+for p in SRC_FILES:
+    with open(p, 'rb') as f:
+        src_bytes[p] = f.read()
+b = b''.join(src_bytes.values())
+code = '\n'.join(v.decode('utf-8') for v in src_bytes.values())
 with open('src/agent.js','rb') as f:
     ab = f.read()
 agent = ab.decode('utf-8')
