@@ -1,9 +1,10 @@
 // Fixed values: bill template, default buckets, month names, layout flags.
+import type { BillDraft, Bucket } from "./types.js";
 
 // ------------
 // Bill template for wizard
 // ------------
-export const BILL_TEMPLATE = [
+export const BILL_TEMPLATE: BillDraft[] = [
 { name: "Rent / Mortgage",          amt: "", day: "", note: "",   category: "Housing" },
 { name: "HOA / Condo fees",         amt: "", day: "", note: "",   category: "Housing" },
 { name: "Home insurance",           amt: "", day: "", note: "",   category: "Housing" },
@@ -40,8 +41,8 @@ export const BILL_TEMPLATE = [
 { name: "Storage unit",             amt: "", day: "", note: "",   category: "Other" },
 { name: "Other recurring bill",     amt: "", day: "", note: "",   category: "Other" },
 ];
-export const newBillId = () => "fb-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-export const BLANK_BILL = () => ({ id: newBillId(), name: "", amt: "", day: "", note: "", category: "Other" });
+export const newBillId = (): string => "fb-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+export const BLANK_BILL = (): BillDraft => ({ id: newBillId(), name: "", amt: "", day: "", note: "", category: "Other" });
 
 
 export const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -56,13 +57,13 @@ export const SURVEY_URL = "https://docs.google.com/forms/d/e/1FAIpQLSc71ZobqLMh8
 // Overview card layout switcher. Flip this constant to try alternate arrangements.
 //   "A" - original: single KPI row, full-width discretionary bar below
 //   "B" - Monthly Income + Discretionary Budget Used share a taller row with larger visualizations
-export const OVERVIEW_LAYOUT = "B";
+export const OVERVIEW_LAYOUT: "A" | "B" = "B";
 
 // Fallback constants used only before first wizard run
 export const NET_PAY = 0;
 export const PAYDAY = 1;
 
-export const BUCKETS = [
+export const BUCKETS: Bucket[] = [
 {
 id: "bills", label: "Fixed Bills", amount: 2100, color: "#4A9EFF",
 items: [
