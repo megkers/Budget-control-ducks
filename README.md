@@ -75,14 +75,17 @@ If you clear your browser data, your budget is deleted. Export to CSV if you wan
 The codebase includes regression and math audits to catch bugs early:
 
 ```bash
-# 79 regression checks (structure, features, configuration integrity)
+# Type check (TypeScript, no output files)
+npm run typecheck
+
+# 156 regression checks (structure, features, configuration integrity)
 python3 regression_v8.py
 
-# 76 math audit checks (rounding, amortization, accumulation)
+# 99 math audit checks (rounding, amortization, accumulation)
 python3 math_audit.py
 ```
 
-Both suites run after each change to ensure correctness and compliance with hard rules (no non-ASCII chars, proper schema versioning, reserve balance consistency, etc.).
+All three run after each change to ensure correctness and compliance with hard rules (no non-ASCII chars, proper schema versioning, reserve balance consistency, etc.).
 
 ## Architecture
 
