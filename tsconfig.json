@@ -7,16 +7,12 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
 
-    "allowJs": true,
-    "checkJs": false,
     "noEmit": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
 
-    "strict": false,
-    // Part of strict, turned on ahead of the rest. Full strict is the next step of #37.
-    "noImplicitAny": true
+    "strict": true
   },
   "include": ["src"]
 }

@@ -249,7 +249,7 @@ export interface ImportReviewRow {
 // A fixed-bill row while being edited. amt and day stay strings so a
 // half-typed number is not coerced; finish() parses them into a BillItem.
 export interface BillDraft {
-  id?: string;
+  id: string;
   name: string;
   amt: string;
   day: string;
