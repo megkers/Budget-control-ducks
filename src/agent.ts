@@ -164,7 +164,7 @@ export const SCREENSHOT_ROW_HINT = 8;
 // Rule matches score 0.7 and 0.9, so only the model's own doubt trips this.
 export const LOW_CONFIDENCE = 0.6;
 
-// A crop in the image's own pixels (not the normalized 0..1 rects in crop.js).
+// A crop in the image's own pixels (not the normalized 0..1 rects in crop.ts).
 export interface PixelRect {
   x: number;
   y: number;

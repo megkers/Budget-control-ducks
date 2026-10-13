@@ -2,7 +2,7 @@
 Math audit test suite for Budget Control
 Validates every calculation path against known scenarios.
 Run: python3 math_audit.py [path/to/App.jsx]   (defaults to src/App.jsx)
-Helper modules next to App.jsx (storage.js, csv.js, ...) are read too.
+Helper modules next to App.jsx (storage.ts, csv.ts, ...) are read too.
 """
 import sys, json, math, glob, os
 

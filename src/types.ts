@@ -182,7 +182,7 @@ export interface MerchantRule {
   updatedAt: string;
 }
 
-// Keyed by normalized merchant string (see normalizeMerchant in rules.js).
+// Keyed by normalized merchant string (see normalizeMerchant in rules.ts).
 export type MerchantRules = Record<string, MerchantRule>;
 
 export interface RuleMatch {
