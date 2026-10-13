@@ -2,7 +2,7 @@
 // Agent module
 // ------------
 // Everything that talks to the Anthropic API lives here. No JSX and no React:
-// App.jsx owns all UI, this file owns the key, the client, and (later) the
+// App.tsx owns all UI, this file owns the key, the client, and (later) the
 // tool definitions and the tool loop.
 
 // Type-only import: erased at build time, so the SDK still loads lazily in
