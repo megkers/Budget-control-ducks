@@ -150,8 +150,10 @@ export interface Debt {
   // calculated and the debt shows a "balance growing" tag.
   grows?: boolean;
   note: string;
-  linkedBucketId: string | null;
-  linkedType: DebtLinkType;
+  // Both are missing on debts added from the Debt edit sheet, which every
+  // reader treats the same as linkedType "manual" with no link.
+  linkedBucketId?: string | null;
+  linkedType?: DebtLinkType;
 }
 
 // ------------

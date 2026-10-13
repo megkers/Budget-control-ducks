@@ -11,7 +11,8 @@ import { resolveFixedDebtLinks, buildDebtWindow } from "./debts.js";
 import { cropNormalize, cropHit, cropApply } from "./crop.js";
 import { fmt, ordinal } from "./format.js";
 import { loadTheme, saveTheme, THEMES, resolveTheme } from "./theme.js";
-import type { BudgetConfig, Bucket, Income, PayFrequency, MonthData, Debt, DebtType, DebtLinkType, BillItem, BillDraft, BillCategory, ThemePref, CsvOutflow } from "./types.js";
+import type { BucketId, BudgetConfig, BudgetData, Bucket, Income, PayFrequency, MonthData, Debt, DebtType, DebtLinkType, BillItem, BillDraft, BillCategory, BucketItem, ThemePref, ThemeTokens, CsvOutflow, CsvColumnMapping, ImportReviewRow } from "./types.js";
+import type { ExtractedRow } from "./agent.js";
 
 // Money Flow charts (d3-sankey). Nodes are identified by id. Links go in with
 // source/target as node ids; once the layout runs, d3 replaces both with the
@@ -20,13 +21,29 @@ type FlowNode = { id: string };
 type LaidNode = SankeyNode<FlowNode, {}>;
 type LaidLink = SankeyLink<FlowNode, {}> & { source: LaidNode; target: LaidNode };
 type FlowGraph = { nodes: LaidNode[]; links: LaidLink[] };
+// One leaf of the Money Flow breakdown. group sub-divides fixed bills by category.
+type FlowItem = { label: string; value: number; color: string; group?: string };
+
+// Row counts shown on the CSV Loaded card.
+type ImportCounts = { income: number; bills: number; disc: number; reserves: number; debts: number };
+// A Settings CSV import, held by Root and only written at the wizard's Launch.
+type CsvImport = { config: BudgetConfig; debts: Debt[] | null; data: BudgetData | null };
+
+// SetupGate and OnboardingWizard take the same inputs. initialConfig and
+// initialDebts pre-fill the wizard for a re-run or a CSV import.
+type SetupProps = {
+  onDone: () => void;
+  onBack: (() => void) | null;
+  initialConfig: BudgetConfig | null;
+  initialDebts: Debt[] | null;
+};
 
 // Single module-level theme read for non-reactive components (SetupGate, WizardShell, OnboardingWizard).
 // BudgetTracker has its own reactive T via useState which shadows this.
 const T = THEMES[resolveTheme(loadTheme())];
 
 //  RESERVE ICONS - Material Symbols Outlined
-const RESERVE_ICONS = {
+const RESERVE_ICONS: Record<BucketId, (color: string) => ReactNode> = {
 bill008: (color) => <span className="material-symbols-outlined" style={{ fontSize: "28px", color, userSelect: "none" }}>travel_luggage_and_bags</span>,
 bill012: (color) => <span className="material-symbols-outlined" style={{ fontSize: "28px", color, userSelect: "none" }}>health_and_beauty</span>,
 bill006: (color) => <span className="material-symbols-outlined" style={{ fontSize: "28px", color, userSelect: "none" }}>apparel</span>,
@@ -77,7 +94,7 @@ onImportCsv={({ config, debts, data }) => { setRerunDebts(debts || null); setPen
 // before the pre-filled wizard opens. Used by both the welcome-screen import
 // and the Settings import. counts = { income, bills, disc, reserves, debts }.
 // ------------
-function ImportSummaryCard({ T, counts, onClose }) {
+function ImportSummaryCard({ T, counts, onClose }: { T: ThemeTokens; counts: ImportCounts; onClose: () => void }) {
 return (
 <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "DM Mono, monospace" }}>
 <div onClick={e => e.stopPropagation()} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "16px", padding: "8px 24px", width: "100%", maxWidth: "340px", display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -103,7 +120,7 @@ return (
 // ------------
 // SetupGate - welcome screen
 // ------------
-function SetupGate({ onDone, onBack, initialConfig, initialDebts }) {
+function SetupGate({ onDone, onBack, initialConfig, initialDebts }: SetupProps) {
 const [mode, setMode] = useState(initialConfig ? "wizard" : null);
 const [csvConfig, setCsvConfig] = useState(null);
 const [csvSummary, setCsvSummary] = useState(null);
@@ -143,13 +160,13 @@ Import from CSV
         return;
       }
 
-      function dataRows(section) { return (sections[section] || []).slice(1); }
-      function num(v) { return parseFloat(v) || 0; }
+      function dataRows(section: string): string[][] { return (sections[section] || []).slice(1); }
+      function num(v: string): number { return parseFloat(v) || 0; }
       var FREQ_MAP = { weekly: 52/12, biweekly: 26/12, semimonthly: 2, monthly: 1 };
 
       // -- Parse META --
       var metaRows = sections["META"] || [];
-      var metaMap = {};
+      var metaMap: Record<string, string> = {};
       metaRows.forEach(function(r) { if (r.length >= 2) metaMap[r[0].trim()] = r[1].trim(); });
       var setupDateStr = metaMap["Setup Date"] || "";
       var parsedSetupMonth = new Date().getMonth();
@@ -185,14 +202,14 @@ Import from CSV
       var billsAmt = Math.round(billItems.filter(function(b) { return b.note !== "cc"; }).reduce(function(s, b) { return s + b.amt; }, 0) * 100) / 100;
 
       // -- Parse DISCRETIONARY --
-      var discColorMap = { bill001: "#E879F9", bill002: "#FFB347", bill003: "#FCD34D", bill004: "#FB923C", bill005: "#FDE68A" };
+      var discColorMap: Record<BucketId, string> = { bill001: "#E879F9", bill002: "#FFB347", bill003: "#FCD34D", bill004: "#FB923C", bill005: "#FDE68A" };
       var discBkts = dataRows("DISCRETIONARY").map(function(r) {
         var id = (r[0] || "").trim();
         return { id: id, label: (r[1] || "").trim(), amount: num(r[2]), color: discColorMap[id] || T.text3 };
       }).filter(function(b) { return b.id && b.amount > 0; });
 
       // -- Parse RESERVES --
-      var resColorMap = { bill011: "#B8A9FF", bill010: "#60A5FA", bill008: T.green, bill006: "#F97316", bill007: "#FDBA74", bill009: "#F9A8D4", bill012: "#C084FC", bill013: "#34D399" };
+      var resColorMap: Record<BucketId, string> = { bill011: "#B8A9FF", bill010: "#60A5FA", bill008: T.green, bill006: "#F97316", bill007: "#FDBA74", bill009: "#F9A8D4", bill012: "#C084FC", bill013: "#34D399" };
       var resBkts = dataRows("RESERVES").map(function(r) {
         var id = (r[0] || "").trim();
         return { id: id, label: (r[1] || "").trim(), amount: num(r[2]), color: resColorMap[id] || T.text3 };
@@ -226,7 +243,7 @@ Import from CSV
       if (newDebts.length > 0) saveDebts(newDebts);
 
       // -- Parse spend data and save to localStorage (BudgetTracker reads on mount) --
-      var newData = {};
+      var newData: BudgetData = {};
       for (var yy = parsedSetupYear; yy <= new Date().getFullYear() + 1; yy++) {
         for (var mm = 0; mm < 12; mm++) {
           newData[yy + "-" + mm] = { spent: {} };
@@ -343,7 +360,7 @@ Have a CSV from a previous export? Import it to skip manual entry.
   };
 
   // Sample spend data for the past 3 months
-  var demoData = {};
+  var demoData: BudgetData = {};
   var spendSamples = [
     { bill002: 410, bill003: 225, bill004: 90, bill005: 95, bill001: 180, bill008: 120, bill012: 65, bill006: 0, bill007: 45, bill009: 80, bill011: 0, bill010: 0 },
     { bill002: 475, bill003: 270, bill004: 130, bill005: 110, bill001: 200, bill008: 0, bill012: 85, bill006: 75, bill007: 0, bill009: 0, bill011: 0, bill010: 150 },
@@ -391,11 +408,40 @@ Or just view the demo
 // ------------
 // WizardShell - at module level to avoid iOS keyboard focus loss
 // ------------
-function WizardShell({ title, subtitle, canNext, onNext, onBack, stepIdx, totalSteps, totalIncome, allocated, step, billsAmt, discAmt, resAmt, children }) {
+// Wizard working copies. Fields a person types into stay strings until
+// finish() parses them, so a half-typed number is never coerced mid-edit.
+type IncomeDraft = { label: string; netPay: string; payday: string; payday2?: string; frequency: PayFrequency };
+type DebtDraft = Omit<Debt, "balance" | "apr" | "monthly" | "monthlyPrincipal"> & {
+  balance: string; apr: string; monthly: number | string; monthlyPrincipal: number | string;
+};
+
+// Which rows the review step lists, captured on entering it (see next()).
+type ReviewKeys = { bills: number[]; disc: BucketId[]; res: BucketId[] };
+
+// A discretionary or reserve bucket while being edited; amount stays a string.
+type BucketDraft = { id: BucketId; label: string; amount: string; color: string };
+
+// Steps of the import sheet. "crop" is the screenshot path's extra step.
+type CsvStep = "upload" | "map" | "review" | "crop";
+
+// One row in the header search results.
+type SearchResult = { section: string; color: string; name: string; detail: string; amount: number; monthly: boolean; note?: string; extra?: string };
+
+// The edit sheets BudgetTracker can open, one per editable section.
+type EditPanel = "income" | "bills" | "disc" | "reserves" | "debt" | "logspend";
+
+type WizardShellProps = {
+  title: string; subtitle: string; canNext: boolean;
+  onNext: () => void; onBack: () => void;
+  stepIdx: number; totalSteps: number; step: string;
+  totalIncome: number; allocated: number; billsAmt: number; discAmt: number; resAmt: number;
+  children?: ReactNode;
+};
+function WizardShell({ title, subtitle, canNext, onNext, onBack, stepIdx, totalSteps, totalIncome, allocated, step, billsAmt, discAmt, resAmt, children }: WizardShellProps) {
 const remaining = Math.round((totalIncome - allocated) * 100) / 100;
 const over = remaining < 0;
 // Display: whole-dollar, floored so sub-dollar rounding dust is hidden
-const fmt0 = n => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+const fmt0 = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 const displayRemaining = over ? Math.ceil(Math.abs(remaining)) : Math.floor(remaining);
 const bAmt = billsAmt || 0;
 const dAmt = discAmt || 0;
@@ -495,13 +541,13 @@ return (
 // ------------
 // OnboardingWizard
 // ------------
-function OnboardingWizard({ onDone, onBack, initialConfig, initialDebts }) {
+function OnboardingWizard({ onDone, onBack, initialConfig, initialDebts }: SetupProps) {
 const STEPS = ["income", "howbudgets", "bills", "discretionary", "reserves", "debt", "review"];
 const [step, setStep] = useState("income");
 const stepIdx = STEPS.indexOf(step);
 // Snapshot of which rows to show on the review step, captured on entry so a
 // row doesn't disappear mid-edit when its amount input is cleared
-const [reviewKeys, setReviewKeys] = useState(null);
+const [reviewKeys, setReviewKeys] = useState<ReviewKeys | null>(null);
 const next = () => {
 const target = STEPS[stepIdx + 1];
 if (target === "review") {
@@ -518,7 +564,7 @@ const prev = () => stepIdx > 0 ? setStep(STEPS[stepIdx - 1]) : onBack();
 const FREQ = { weekly: 52/12, biweekly: 26/12, semimonthly: 2, monthly: 1 };
 
 // Pre-populate from saved config if re-running, otherwise start blank
-const [incomes, setIncomes] = useState(() => {
+const [incomes, setIncomes] = useState<IncomeDraft[]>(() => {
 if (initialConfig && initialConfig.incomes && initialConfig.incomes.length) {
 return initialConfig.incomes.map(i => ({
 label: i.label || "Main Job",
@@ -589,9 +635,9 @@ return saved ? { ...r, label: saved.label, amount: String(saved.amount || "") } 
 return RESERVE_DEFAULTS;
 });
 
-const DEBT_TYPES = ["medical", "auto", "mortgage", "student", "credit card", "other"];
-const newDebt = () => ({ id: "d-" + Date.now(), name: "", type: "other", balance: "", apr: "", balanceAsOf: new Date().toISOString().slice(0, 10), linkedBucketId: null, linkedType: "manual", monthly: 0, monthlyPrincipal: 0, note: "" });
-const [debts, setDebts] = useState(() => {
+const DEBT_TYPES: DebtType[] = ["medical", "auto", "mortgage", "student", "credit card", "other"];
+const newDebt = (): DebtDraft => ({ id: "d-" + Date.now(), name: "", type: "other", balance: "", apr: "", balanceAsOf: new Date().toISOString().slice(0, 10), linkedBucketId: null, linkedType: "manual", monthly: 0, monthlyPrincipal: 0, note: "" });
+const [debts, setDebts] = useState<DebtDraft[]>(() => {
 if (initialDebts || initialConfig) {
   // Re-run or CSV import: pre-fill debts. initialDebts (passed in-memory for a
   // Settings import) takes precedence so nothing is written until Launch;
@@ -661,8 +707,8 @@ const filledDebts = debts.filter(d => d.name.trim() || d.linkedBucketId).map(d =
 ...d,
 balance: parseFloat(d.balance) || 0,
 apr: parseFloat(d.apr) || 0,
-monthly: parseFloat(d.monthly) || 0,
-monthlyPrincipal: parseFloat(d.monthly) || 0,
+monthly: parseFloat(String(d.monthly)) || 0,
+monthlyPrincipal: parseFloat(String(d.monthly)) || 0,
 }));
 saveDebts(filledDebts);
 onDone();
@@ -670,13 +716,13 @@ onDone();
 
 // -- Step: income --
 if (step === "income") {
-const FREQ_OPTS = [
+const FREQ_OPTS: { value: PayFrequency; label: string; note: string }[] = [
 { value: "weekly",      label: "Weekly",   note: "based on 52 paychecks / year" },
 { value: "biweekly",    label: "Biweekly", note: "based on 26 paychecks / year" },
 { value: "semimonthly", label: "2x / mo",  note: "2 paychecks / month" },
 { value: "monthly",     label: "Monthly",  note: "1 paycheck / month" },
 ];
-const fmt0 = n => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+const fmt0 = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 const canNext = incomes.every(i => {
 if (!parseFloat(i.netPay)) return false;
 if (i.frequency === "monthly" || i.frequency === "semimonthly") {
@@ -689,7 +735,7 @@ return (
 {incomes.map((inc, i) => {
 const mult    = FREQ[inc.frequency] || 1;
 const monthly = Math.round((parseFloat(inc.netPay) || 0) * mult);
-const upd     = patch => setIncomes(p => p.map((x, j) => j === i ? { ...x, ...patch } : x));
+const upd     = (patch: Partial<IncomeDraft>) => setIncomes(p => p.map((x, j) => j === i ? { ...x, ...patch } : x));
 return (
 <div key={i} style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "16px", marginBottom: "10px" }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
@@ -762,7 +808,7 @@ Since your payday shifts each week, we calculate your monthly total automaticall
 
 // -- Step: howbudgets --
 if (step === "howbudgets") {
-var fmt0h = function(n) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n); };
+var fmt0h = function(n: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n); };
 return (
 <WizardShell {...shellProps} title="How this works" subtitle="" canNext={true} onNext={next}>
 <div style={{ fontSize: "13px", color: T.text3, marginBottom: "24px", lineHeight: "1.6" }}>
@@ -829,7 +875,7 @@ const c = b.category || "Other";
 if (!acc[c]) acc[c] = [];
 acc[c].push({ b, i });
 return acc;
-}, {});
+}, {} as Record<BillCategory, { b: BillDraft; i: number }[]>);
 const cats = CAT_ORDER.filter(c => grouped[c]);
 return (
 <WizardShell {...shellProps} title="Fixed bills" subtitle="Fixed bills are predictable - the same amount, due around the same day each month. Think rent, insurance, or a car payment. Leave rows blank to skip them - they won't be saved." canNext={true} onNext={next}>
@@ -936,19 +982,19 @@ const filledDisc  = disc.filter(b => parseFloat(b.amount) > 0);
 const linkedIds   = new Set(debts.map(d => d.linkedBucketId).filter(Boolean));
 const manualDebts = debts.filter(d => d.linkedType === "manual");
 
-function toggle(id, name, amt, type) {
+function toggle(id: string, name: string, amt: string, type: DebtLinkType) {
   if (linkedIds.has(id)) {
     setDebts(p => p.filter(d => d.linkedBucketId !== id));
   } else {
     setDebts(p => [...p, { ...newDebt(), name, linkedBucketId: id, linkedType: type, monthly: parseFloat(amt) || 0, monthlyPrincipal: parseFloat(amt) || 0 }]);
   }
 }
-function updLinked(id, patch) { setDebts(p => p.map(d => d.linkedBucketId === id ? { ...d, ...patch } : d)); }
-function updManual(id, patch) { setDebts(p => p.map(d => d.id === id ? { ...d, ...patch } : d)); }
+function updLinked(id: string, patch: Partial<DebtDraft>) { setDebts(p => p.map(d => d.linkedBucketId === id ? { ...d, ...patch } : d)); }
+function updManual(id: string, patch: Partial<DebtDraft>) { setDebts(p => p.map(d => d.id === id ? { ...d, ...patch } : d)); }
 
 const inpStyle: CSSProperties = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "14px", width: "100%", boxSizing: "border-box" };
 
-const renderDebtDetail = (d, onChange) => (
+const renderDebtDetail = (d: DebtDraft, onChange: (patch: Partial<DebtDraft>) => void) => (
   <div style={{ marginTop: "12px", borderTop: "1px solid " + T.bord, paddingTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
       <div style={{ minWidth: 0 }}>
@@ -957,7 +1003,7 @@ const renderDebtDetail = (d, onChange) => (
       </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "4px" }}>Type</div>
-        <select value={d.type} onChange={e => onChange({ type: e.target.value })} style={inpStyle}>
+        <select value={d.type} onChange={e => onChange({ type: e.target.value as DebtType })} style={inpStyle}>
           {DEBT_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
         </select>
       </div>
@@ -1082,7 +1128,7 @@ return (
 
 // -- Step: review --
 if (step === "review") {
-const fmt0 = n => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+const fmt0 = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 // Fallback if the step is ever reached without a snapshot
 const rk = reviewKeys || {
 bills: bills.map((b, i) => ({ b, i })).filter(({ b }) => b.name.trim() && parseFloat(b.amt) > 0 && b.note !== "cc").map(({ i }) => i),
@@ -1093,7 +1139,7 @@ const rowStyle: CSSProperties = { display: "flex", alignItems: "center", justify
 const rowName: CSSProperties = { fontSize: "13px", color: T.text1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const rowInp: CSSProperties = { background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "6px 8px", borderRadius: "4px", fontSize: "14px", width: "90px", textAlign: "right", fontFamily: "DM Mono, monospace" };
 const perMo = <span style={{ fontSize: "12px", color: T.text3, flexShrink: 0 }}>/mo</span>;
-const section = (label, color, total, targetStep, rows) => (
+const section = (label: string, color: string, total: number, targetStep: string, rows: ReactNode) => (
 <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 14px", marginBottom: "10px" }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "8px", borderBottom: "1px solid " + T.bord }}>
 <span style={{ fontSize: "12px", letterSpacing: "0.15em", textTransform: "uppercase", color }}>{label}</span>
@@ -1220,7 +1266,7 @@ return (
 return null;
 }
 
-function BudgetTracker({ onReset, onRerunWizard, onImportCsv }) {
+function BudgetTracker({ onReset, onRerunWizard, onImportCsv }: { onReset: () => void; onRerunWizard: () => void; onImportCsv: (imp: CsvImport) => void }) {
 // ---- Theme ----
 const [themePref, setThemePref] = useState(function() { return loadTheme(); });
 const resolvedMode = resolveTheme(themePref);
@@ -1276,7 +1322,7 @@ const setupYear  = cfg?.setupYear ?? iy;
 const setupMonth = cfg?.setupMonth ?? 0;
 
 // Reserve monthly contribution amounts keyed by bucket id - derived from cfg
-const reserveMonthly = {};
+const reserveMonthly: Record<BucketId, number> = {};
 (cfg?.buckets || BUCKETS).forEach(b => { reserveMonthly[b.id] = b.amount || 0; });
 
 const [year, setYear] = useState(iy);
@@ -1284,7 +1330,7 @@ const [month, setMonth] = useState(im);
 const [tab, setTab] = useState("overview");
 const [expanded, setExpanded] = useState(null);
 const [data, setData] = useState(() => loadData() || getDefaultData());
-const [inputs, setInputs] = useState({});
+const [inputs, setInputs] = useState<Record<BucketId, string>>({});
 const [debts, setDebts] = useState(() => loadDebts() || []);
 // Flat itemized ledger. foldLegacyTransactions() migrates any per-month records
 // (incl. ones a CSV import just wrote into budgetData) into it on mount.
@@ -1297,13 +1343,13 @@ const [txReserve, setTxReserve] = useState("bill008");
 // CSV import flow (inside the Log Spend modal). csvStep drives the whole
 // upload; csvStep walks upload -> map -> review. Nothing is committed until the
 // user hits Submit on the review step (single-session; leftovers are discarded).
-const [csvStep, setCsvStep] = useState("upload");  // "upload" | "map" | "review"
+const [csvStep, setCsvStep] = useState<CsvStep>("upload");  // "upload" | "map" | "review"
 const [csvFileName, setCsvFileName] = useState("");
 const [csvHeaders, setCsvHeaders] = useState([]);
-const [csvRawRows, setCsvRawRows] = useState([]);
+const [csvRawRows, setCsvRawRows] = useState<string[][]>([]);
 const [csvMapping, setCsvMapping] = useState({ date: -1, amount: -1, description: -1, debit: -1, credit: -1 });
 const [csvOutflow, setCsvOutflow] = useState<CsvOutflow>("negative"); // single-amount sign meaning money out
-const [csvReviewRows, setCsvReviewRows] = useState([]);
+const [csvReviewRows, setCsvReviewRows] = useState<ImportReviewRow[]>([]);
 const [csvSkipped, setCsvSkipped] = useState(0);
 const [csvDupes, setCsvDupes] = useState(0);
 const [csvAutos, setCsvAutos] = useState(0); // rows pre-categorized by merchant memory
@@ -1321,7 +1367,7 @@ const [csvDragOver, setCsvDragOver] = useState(false);
 // modal. The crop rect is normalized 0..1 so it survives the image being
 // displayed at whatever width the window allows.
 const [csvSource, setCsvSource] = useState("csv"); // "csv" | "shot"
-const [shotImg, setShotImg] = useState(null);
+const [shotImg, setShotImg] = useState<HTMLImageElement | null>(null);
 const [shotRect, setShotRect] = useState({ x: 0.02, y: 0.15, w: 0.96, h: 0.8 });
 const [shotBusy, setShotBusy] = useState(false);
 const [shotError, setShotError] = useState("");
@@ -1348,8 +1394,8 @@ const [keyStatus, setKeyStatus] = useState("idle"); // idle | verifying | error
 const [keyError, setKeyError] = useState("");
 const [agentOpen, setAgentOpen] = useState(false);
 const [keyModalOpen, setKeyModalOpen] = useState(false);
-const [debtInputs, setDebtInputs] = useState({});
-const [projMonthly, setProjectMonthly] = useState({});
+const [debtInputs, setDebtInputs] = useState<Record<string, string>>({});
+const [projMonthly, setProjectMonthly] = useState<Record<string, number>>({});
 const [showFlowInfo, setShowFlowInfo] = useState(false);
 const [showDebtInfo, setShowDebtInfo] = useState(false);
 const [debtChartHover, setDebtChartHover] = useState(null);
@@ -1357,16 +1403,16 @@ const [moneyFlowHovered, setMoneyFlowHovered] = useState(null);
 const [moneyFlowTooltip, setMoneyFlowTooltip] = useState(null);
 const [flowLinkHover, setFlowLinkHover] = useState(null);
 // editModal: null | "bills" | "disc" | "reserves" | "debt" | "income"
-const [editModal, setEditModal] = useState(null);
+const [editModal, setEditModal] = useState<EditPanel | null>(null);
 // Parsed-but-not-yet-applied CSV import: { counts, payload }. Shows the CSV
 // Loaded card; on close the pre-filled wizard opens (nothing saved until Launch).
 const [importPreview, setImportPreview] = useState(null);
 // Local edit state - populated when a modal opens
-const [editBills, setEditBills] = useState([]);
-const [editDisc, setEditDisc] = useState([]);
-const [editReserves, setEditReserves] = useState([]);
-const [editDebts, setEditDebts] = useState([]);
-const [editIncomes, setEditIncomes] = useState([]);
+const [editBills, setEditBills] = useState<BillDraft[]>([]);
+const [editDisc, setEditDisc] = useState<BucketDraft[]>([]);
+const [editReserves, setEditReserves] = useState<BucketDraft[]>([]);
+const [editDebts, setEditDebts] = useState<DebtDraft[]>([]);
+const [editIncomes, setEditIncomes] = useState<IncomeDraft[]>([]);
 
 // Persist data and debts to localStorage whenever they change
 useEffect(() => { saveData(data); }, [data]);
@@ -1376,14 +1422,14 @@ useEffect(() => { saveTransactions(transactions); }, [transactions]);
 const key = `${year}-${month}`;
 const cur = data[key] || { spent: {} };
 
-function setSpent(id, val) {
-setData(d => ({ ...d, [key]: { ...d[key], spent: { ...d[key]?.spent, [id]: parseFloat(val) || 0 } } }));
+function setSpent(id: BucketId, val: string | number) {
+setData(d => ({ ...d, [key]: { ...d[key], spent: { ...d[key]?.spent, [id]: parseFloat(String(val)) || 0 } } }));
 }
 
 
 // Shared reserve balance calculator -- single source of truth for all reserve running balances.
 // Rounds to cents to prevent IEEE 754 drift over many months. (ref: math_audit.py)
-function getReserveBal(id) {
+function getReserveBal(id: BucketId) {
   let bal = 0;
   const mo = reserveMonthly[id] || 0;
   for (let y = setupYear; y <= year; y++)
@@ -1396,7 +1442,7 @@ function getReserveBal(id) {
   return Math.round(bal * 100) / 100;
 }
 
-function reassignTransaction(txId, newBucketId) {
+function reassignTransaction(txId: string, newBucketId: BucketId) {
 setTransactions(t => t.map(tx =>
 tx.id === txId ? { ...tx, bucketId: newBucketId || null } : tx
 ));
@@ -1457,7 +1503,7 @@ setAiError("");
 }
 function closeLogSpend() { resetCsv(); setEditModal(null); }
 
-function handleCsvFile(file) {
+function handleCsvFile(file: File) {
 if (!file) return;
 const reader = new FileReader();
 reader.onload = e => {
@@ -1485,21 +1531,21 @@ reader.readAsText(file);
 // Turn raw rows into reviewable spend rows using the column mapping, dropping
 // malformed rows and exact duplicates of already-imported transactions. Rows
 // whose merchant matches a learned rule arrive pre-categorized.
-function parseCsvRows(rawRows, mapping, outflow) {
+function parseCsvRows(rawRows: string[][], mapping: CsvColumnMapping, outflow: CsvOutflow) {
 // A debit column alone is enough to know money-out; requiring a credit column
 // too used to drop the file into the signed-amount branch with no amount
 // column mapped, which silently skipped every row.
 const useDC = mapping.debit !== -1;
-const existingRefs = {};
+const existingRefs: Record<string, boolean> = {};
 transactions.forEach(t => { if (t.sourceRef) existingRefs[t.sourceRef] = true; });
 const rules = loadRules();
 // A rule can outlive its bucket (renamed setup, re-run wizard). Only pre-fill
 // buckets the picker still offers, so a stale rule cannot commit into nothing.
-const validBucket = {};
+const validBucket: Record<BucketId, boolean> = {};
 buckets.forEach(b => { if (DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id)) validBucket[b.id] = true; });
-const seenThisImport = {};
+const seenThisImport: Record<string, boolean> = {};
 let skipped = 0, dupes = 0, autos = 0, refunds = 0;
-const out = [];
+const out: ImportReviewRow[] = [];
 rawRows.forEach(r => {
 const date = csvParseDate(r[mapping.date]);
 let amount = null;
@@ -1551,15 +1597,15 @@ return { out, skipped, dupes, autos, refunds };
 // transaction already imported from a CSV hashes identically and is caught as
 // a duplicate. That cross-source catch is the whole point, so the "csv_" prefix
 // stays even though the name now undersells it.
-function parseShotRows(rows) {
-const existingRefs = {};
+function parseShotRows(rows: ExtractedRow[]) {
+const existingRefs: Record<string, boolean> = {};
 transactions.forEach(t => { if (t.sourceRef) existingRefs[t.sourceRef] = true; });
 const rules = loadRules();
-const validBucket = {};
+const validBucket: Record<BucketId, boolean> = {};
 buckets.forEach(b => { if (DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id)) validBucket[b.id] = true; });
-const seenThisImport = {};
+const seenThisImport: Record<string, boolean> = {};
 let skipped = 0, dupes = 0, autos = 0, refunds = 0;
-const out = [];
+const out: ImportReviewRow[] = [];
 rows.forEach(r => {
 const date = csvParseDate(r && r.date);
 const rawAmt = r && r.amount;
@@ -1609,7 +1655,7 @@ setShotPreview(null);
 
 // Load a chosen screenshot and move to the crop step. Nothing is sent yet: the
 // file is only decoded locally so the user can draw a box around the rows.
-function handleScreenshotFile(file) {
+function handleScreenshotFile(file: File) {
 setShotError("");
 const url = URL.createObjectURL(file);
 const img = new Image();
@@ -1641,7 +1687,7 @@ examples: transactions.filter(t => t.description && t.bucketId).slice(-20)
 // background; the review screen is usable the whole time and the reply fills
 // only rows still blank when it lands. Any failure degrades to "categorize by
 // hand" and never blocks the import.
-async function runAiSuggest(rows) {
+async function runAiSuggest(rows: ImportReviewRow[]) {
 if (!aiCategorize || !apiKey) return;
 const blank = rows.filter(r => !r.bucketId).slice(0, CATEGORIZE_MAX_ROWS)
 .map(r => ({ id: r.rowId, date: r.date, amount: r.amount, description: r.description }));
@@ -1652,7 +1698,7 @@ const res = await suggestBuckets(apiKey, blank, aiContext());
 if (req !== aiReq.current) return;
 setAiBusy(false);
 if (!res.ok) { setAiError(res.error); return; }
-const validBucket = {};
+const validBucket: Record<BucketId, boolean> = {};
 buckets.forEach(b => { if (DISC_IDS_EDIT.includes(b.id) || RESERVE_IDS_EDIT.includes(b.id)) validBucket[b.id] = true; });
 setCsvReviewRows(current => mergeAiSuggestions(current, res.suggestions, validBucket).rows);
 }
@@ -1691,7 +1737,7 @@ setCsvRefunds(parsedRows.refunds);
 setCsvStep("review");
 }
 
-function applyMapping(rawRows, mapping, outflow) {
+function applyMapping(rawRows: string[][], mapping: CsvColumnMapping, outflow: CsvOutflow) {
 const res = parseCsvRows(rawRows, mapping, outflow);
 setCsvReviewRows(res.out);
 setCsvSkipped(res.skipped);
@@ -1735,7 +1781,7 @@ saveCsvMappings(all);
 closeLogSpend();
 }
 
-function isBillPaid(itemDay) {
+function isBillPaid(itemDay: number) {
 // Auto-mark paid if the bill's day has passed in the current month/year
 const today = new Date();
 const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
@@ -1745,12 +1791,12 @@ if (isCurrentMonth) return itemDay <= today.getDate();
 return false;
 }
 
-function payoffMonths(balance, monthly) {
+function payoffMonths(balance: number, monthly: number) {
 if (!monthly || !balance) return null;
 return Math.ceil(balance / monthly);
 }
 
-function payoffDate(months) {
+function payoffDate(months: number) {
 if (!months) return null;
 const d = new Date();
 d.setMonth(d.getMonth() + months);
@@ -1760,10 +1806,10 @@ return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 // ---- Edit modal helpers ----
 const DISC_IDS_EDIT = ["bill002","bill005","bill003","bill004","bill001"];
 const RESERVE_IDS_EDIT = ["bill011","bill010","bill008","bill006","bill007","bill009","bill012","bill013"];
-const BILL_COLORS = { Housing: T.blue, Transportation: T.green, Utilities: "#B8A9FF", Subscriptions: "#E879F9", Health: "#FF6B9D", Financial: "#FFB347", Giving: "#FB923C", Other: T.text3 };
-const CAT_ORDER_EDIT = ["Housing","Transportation","Utilities","Subscriptions","Health","Financial","Giving","Other"];
+const BILL_COLORS: Record<string, string> = { Housing: T.blue, Transportation: T.green, Utilities: "#B8A9FF", Subscriptions: "#E879F9", Health: "#FF6B9D", Financial: "#FFB347", Giving: "#FB923C", Other: T.text3 };
+const CAT_ORDER_EDIT: BillCategory[] = ["Housing","Transportation","Utilities","Subscriptions","Health","Financial","Giving","Other"];
 
-const openEditModal = (panel) => {
+const openEditModal = (panel: EditPanel) => {
   const c = loadConfig();
   if (panel === "bills") {
     // Merge saved bills back into full template so user can add/edit any row
@@ -1860,14 +1906,14 @@ const saveEditModal = () => {
       ...d,
       balance: parseFloat(d.balance) || 0,
       apr: parseFloat(d.apr) || 0,
-      monthly: parseFloat(d.monthly) || 0,
-      monthlyPrincipal: parseFloat(d.monthlyPrincipal) || 0,
+      monthly: parseFloat(String(d.monthly)) || 0,
+      monthlyPrincipal: parseFloat(String(d.monthlyPrincipal)) || 0,
     }));
     saveDebts(saved);
     setDebts(saved);
   }
   if (editModal === "income") {
-    var FREQ_SAVE = { weekly: 52/12, biweekly: 26/12, semimonthly: 2, monthly: 1 };
+    var FREQ_SAVE: Record<string, number> = { weekly: 52/12, biweekly: 26/12, semimonthly: 2, monthly: 1 };
     var savedInc = editIncomes.filter(function(i) { return parseFloat(i.netPay) > 0; }).map(function(i) {
       return {
         label: i.label || "Income",
@@ -1887,7 +1933,7 @@ const saveEditModal = () => {
 };
 
 // Shared modal overlay wrapper - renderXxx pattern per rule 3
-const renderModalOverlay = (title, content) => (
+const renderModalOverlay = (title: string, content: ReactNode) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
     onClick={e => { if (e.target === e.currentTarget) setEditModal(null); }}>
     <div style={{ background: T.surf, borderRadius: "8px 8px 0 0", width: "100%", maxWidth: "600px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
@@ -1929,7 +1975,7 @@ const renderInfoModal = (title: string, content: ReactNode, onClose?: () => void
 // sheet also means whichever tab you were reading is still there underneath.
 // The tool loop and conversation land in the body next; this is the connect gate.
 const renderAgentPanel = () => {
-  const example = (q) => (
+  const example = (q: string) => (
     <div key={q} style={{ background: T.bg, border: "1px solid " + T.bord, borderRadius: "6px", padding: "10px 12px", marginBottom: "8px", fontSize: "12px", color: T.text2 }}>{q}</div>
   );
   const examples = [
@@ -2074,10 +2120,10 @@ const renderKeyModal = () => {
 
 // Debt Paid card detail: cumulative amount paid off over the last 12 months
 const renderDebtInfoModal = () => {
-  const kfmt = (v) => v >= 1000 ? "$" + (v / 1000).toFixed(v >= 9500 ? 0 : 1).replace(/\.0$/, "") + "k" : "$" + Math.round(v);
+  const kfmt = (v: number) => v >= 1000 ? "$" + (v / 1000).toFixed(v >= 9500 ? 0 : 1).replace(/\.0$/, "") + "k" : "$" + Math.round(v);
   const monthsElapsed = (year - setupYear) * 12 + (month - setupMonth) + 1;
   const { N, series, startTotal, C, windowPaid, paidPct } = buildDebtWindow(debts, monthsElapsed);
-  const monthLabel = (i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (N - i)); return MONTHS[d.getMonth()]; };
+  const monthLabel = (i: number) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (N - i)); return MONTHS[d.getMonth()]; };
 
   const rough = startTotal || 1;
   const pow = Math.pow(10, Math.floor(Math.log10(rough)));
@@ -2086,8 +2132,8 @@ const renderDebtInfoModal = () => {
   const PINK = "#FF6B9D", SLATE = "#3D4657";
   const W = 680, H = 320, padL = 56, padR = 20, padT = 20, padB = 40;
   const x0 = padL, x1 = W - padR, y0 = padT, y1 = H - padB;
-  const xFor = (i) => x0 + (i / N) * (x1 - x0);
-  const yFor = (v) => y1 - (v / niceMax) * (y1 - y0);
+  const xFor = (i: number) => x0 + (i / N) * (x1 - x0);
+  const yFor = (v: number) => y1 - (v / niceMax) * (y1 - y0);
 
   const paidPts = series.map(p => xFor(p.i).toFixed(1) + " " + yFor(p.paid).toFixed(1));
   const paidLine = "M " + paidPts.join(" L ");
@@ -2102,7 +2148,7 @@ const renderDebtInfoModal = () => {
 
   const hi = debtChartHover != null && debtChartHover <= N ? debtChartHover : null;
 
-  const legendItem = (color, label, dashed) => (
+  const legendItem = (color: string, label: string, dashed?: boolean) => (
     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
       {dashed
         ? <svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke={color} strokeWidth="2" strokeDasharray="4 3" /></svg>
@@ -2197,14 +2243,14 @@ const renderLogSpend = () => {
     ? estimateCents(Math.round(shotRect.w * shotImg.naturalWidth), Math.round(shotRect.h * shotImg.naturalHeight))
     : 0;
   // Both capture methods share the outer steps; only the middle one differs.
-  const csvSteps = csvSource === "shot"
+  const csvSteps: [CsvStep, string][] = csvSource === "shot"
     ? [["upload", "Upload"], ["crop", "Crop"], ["review", "Review"]]
     : [["upload", "Upload"], ["map", "Map columns"], ["review", "Review"]];
   const csvStepIdx = csvSteps.findIndex(s => s[0] === csvStep);
   // A wrong column map or sign choice is only discoverable on the next step, so
   // completed steps stay reachable. Forward moves still go through the step's
   // own Continue button, which is what validates and re-parses.
-  const gotoCsvStep = (target) => {
+  const gotoCsvStep = (target: CsvStep) => {
     const ti = csvSteps.findIndex(s => s[0] === target);
     if (ti === -1 || ti >= csvStepIdx) return;
     setCsvStep(target);
@@ -2215,7 +2261,7 @@ const renderLogSpend = () => {
     ? parseCsvRows(csvRawRows, csvMapping, csvOutflow)
     : { out: [], skipped: 0, dupes: 0, autos: 0, refunds: 0 };
   const readyCount = csvReviewRows.filter(r => r.bucketId).length;
-  const colSelect = (field, label) => (
+  const colSelect = (field: keyof CsvColumnMapping, label: string) => (
     <div>
       <div style={{ ...cs.lbl, marginBottom: "4px" }}>{label}</div>
       <select value={csvMapping[field]} onChange={e => setCsvMapping(m => ({ ...m, [field]: parseInt(e.target.value, 10) }))}
@@ -2227,7 +2273,7 @@ const renderLogSpend = () => {
   );
   // How many rows share each merchant, so a repeat is visible before the picker
   // quietly fills in its siblings.
-  const merchantCounts = {};
+  const merchantCounts: Record<string, number> = {};
   csvReviewRows.forEach(r => {
     const k = normalizeMerchant(r.description);
     if (k) merchantCounts[k] = (merchantCounts[k] || 0) + 1;
@@ -2235,7 +2281,7 @@ const renderLogSpend = () => {
   // Answering for one row answers for every other row from the same merchant
   // that is still blank. Rows already set by hand are left alone, so a
   // deliberate one-off never gets overwritten by a later sibling.
-  const setRowBucket = (row, bucketId) => {
+  const setRowBucket = (row: ImportReviewRow, bucketId: BucketId | null) => {
     const key = normalizeMerchant(row.description);
     setCsvReviewRows(rows => rows.map(x => {
       if (x.rowId === row.rowId) return { ...x, bucketId: bucketId || null };
@@ -2246,11 +2292,11 @@ const renderLogSpend = () => {
   // Whole-file assignment, for the CSV that is one trip or one occasion.
   // Clearing is the same operation with an empty bucket, which doubles as the
   // undo for a bulk apply that went the wrong way.
-  const applyBulk = (bucketId) => {
+  const applyBulk = (bucketId: BucketId) => {
     setCsvReviewRows(rows => rows.map(r => ({ ...r, bucketId: bucketId === "__clear" ? null : bucketId })));
   };
   const txReady = !!txMerchant.trim() && !isNaN(parseFloat(txAmount)) && parseFloat(txAmount) > 0 && !!txReserve;
-  const bucketPicker = (row) => (
+  const bucketPicker = (row: ImportReviewRow) => (
     <select value={row.bucketId || ""} onChange={e => setRowBucket(row, e.target.value)}
       style={{ ...cs.inp, fontSize: "12px", padding: "5px 6px", minWidth: 0, width: "100%" }}>
       <option value="">Categorize...</option>
@@ -2703,7 +2749,7 @@ const renderEditBills = () => {
     if (!acc[c]) acc[c] = [];
     acc[c].push({ b, i });
     return acc;
-  }, {});
+  }, {} as Record<BillCategory, { b: BillDraft; i: number }[]>);
   const cats = CAT_ORDER_EDIT.filter(c => grouped[c]);
   const billsTotal = editBills.filter(b => b.note !== "cc").reduce((s, b) => s + (parseFloat(b.amt) || 0), 0);
   return renderModalOverlay("Edit Fixed Bills", (
@@ -2834,7 +2880,7 @@ const renderEditDebtModal = () => {
             <div>
               <div style={{ ...cs.lbl, marginBottom: "4px" }}>Type</div>
               <select value={d.type}
-                onChange={e => setEditDebts(p => p.map((x,j) => j===i ? {...x, type: e.target.value} : x))}
+                onChange={e => setEditDebts(p => p.map((x,j) => j===i ? {...x, type: e.target.value as DebtType} : x))}
                 style={{ ...cs.inp, width: "100%", boxSizing: "border-box", fontSize: "13px", cursor: "pointer" }}>
                 {DEBT_TYPES_EDIT.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
@@ -2886,7 +2932,7 @@ const renderEditIncome = () => {
     { value: "semimonthly", label: "2x / mo" },
     { value: "monthly",     label: "Monthly" },
   ];
-  var FREQ_MULT = { weekly: 52/12, biweekly: 26/12, semimonthly: 2, monthly: 1 };
+  var FREQ_MULT: Record<string, number> = { weekly: 52/12, biweekly: 26/12, semimonthly: 2, monthly: 1 };
   var totalMo = Math.round(editIncomes.reduce(function(s, i) { return s + (parseFloat(i.netPay) || 0) * (FREQ_MULT[i.frequency] || 1); }, 0) * 100) / 100;
   return renderModalOverlay("Edit Income", (
     <div>
@@ -2966,20 +3012,20 @@ const renderEditIncome = () => {
 };
 
 // Floating edit button used in each tab
-const renderEditBtn = (panel) => (
+const renderEditBtn = (panel: EditPanel) => (
   <button onClick={() => openEditModal(panel)}
     style={{ display: "flex", alignItems: "center", gap: "5px", background: T.surf, border: "1px solid " + T.bord, color: T.text3, padding: "5px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.05em", marginBottom: "14px" }}>
     <span className="material-symbols-outlined" style={{ fontSize: "15px" }}>edit</span>Edit
   </button>
 );
-const reserveBals = {};
+const reserveBals: Record<BucketId, number> = {};
 RESERVE_IDS_EDIT.forEach(function(id) { reserveBals[id] = getReserveBal(id); });
 const totalDebtBal = debts.reduce((s, d) => s + d.balance, 0);
 const totalMedBal = debts.filter(d => d.type === 'medical').reduce((s, d) => s + d.balance, 0);
 const totalMedMo = debts.filter(d => d.type === 'medical').reduce((s, d) => s + d.monthly, 0);
 const totalBudgeted = buckets.reduce((s, b) => s + b.amount, 0);
 
-const tabStyle = (a) => ({
+const tabStyle = (a: boolean): CSSProperties => ({
 background: "none", border: "none", borderBottom: a ? "2px solid " + T.blue : "2px solid transparent",
 color: a ? T.blue : T.text2, padding: "10px 16px", fontSize: "12px", letterSpacing: "0.15em",
 textTransform: "uppercase", cursor: "pointer", marginBottom: "-1px", whiteSpace: "nowrap"
@@ -3031,7 +3077,7 @@ style={{ ...cs.inp, flex: 1, fontSize: "16px", padding: "8px 12px", minWidth: 0 
 </div>
 {search.trim().length > 0 && (() => {
 const q = search.trim().toLowerCase();
-const results = [];
+const results: SearchResult[] = [];
 const billsBucket = buckets.find(b => b.id === "bills");
 if (billsBucket) {
 billsBucket.items.forEach(item => {
@@ -3149,7 +3195,7 @@ return (
               const svgWidth = isB ? 260 : 200;
               const miniNodes = [{ id: "Income" }].concat(flowItems.map(f => ({ id: f.label })));
               const miniLinks = flowItems.map(f => ({ source: "Income", target: f.label, value: f.value }));
-              const miniColorMap = { Income: "#7ED4A0" };
+              const miniColorMap: Record<string, string> = { Income: "#7ED4A0" };
               flowItems.forEach(f => { miniColorMap[f.label] = f.color; });
 
               const miniLayout = d3Sankey<FlowNode, {}>()
@@ -3283,8 +3329,8 @@ return (
         const PINK = "#FF6B9D", SLATE = "#3D4657";
         const w = 160, h = 66;
         const niceMax = (dw.startTotal || 1) * 1.1;
-        const xF = (i) => (i / dw.N) * w;
-        const yF = (v) => h - (v / niceMax) * h;
+        const xF = (i: number) => (i / dw.N) * w;
+        const yF = (v: number) => h - (v / niceMax) * h;
         const paidPts = dw.series.map(p => xF(p.i).toFixed(1) + " " + yF(p.paid).toFixed(1));
         const paidArea = "M 0 " + h + " L " + paidPts.join(" L ") + " L " + w + " " + h + " Z";
         const paidLine = "M " + paidPts.join(" L ");
@@ -3403,7 +3449,7 @@ return (
     <div style={{ background: T.surf, border: "1px solid " + T.bord, borderRadius: "8px", padding: "12px 18px", marginBottom: "10px" }}>
       {(() => {
         const reserveIds = ["bill006","bill007","bill008","bill009","bill011","bill012","bill010"];
-        const iconMap = {"bill008":"travel_luggage_and_bags","bill012":"health_and_beauty","bill006":"apparel","bill007":"featured_seasonal_and_gifts","bill009":"pets","bill011":"savings"};
+        const iconMap: Record<BucketId, string> = {"bill008":"travel_luggage_and_bags","bill012":"health_and_beauty","bill006":"apparel","bill007":"featured_seasonal_and_gifts","bill009":"pets","bill011":"savings"};
         const reserves = buckets.filter(b => reserveIds.includes(b.id) && b.amount > 0);
         const total = reserves.reduce((s,b) => s + b.amount, 0);
         return (
@@ -3680,7 +3726,7 @@ return (
           {(() => {
             const upcomingItems = knownItems.filter(item => !isBillPaid(item.day));
             const paidItems = knownItems.filter(item => isBillPaid(item.day));
-            const renderItem = (item, i, arr) => {
+            const renderItem = (item: BucketItem, i: number, arr: BucketItem[]) => {
               const isCC = item.note === "cc";
               const isEarly = item.day < primaryPayday;
               const paid = isBillPaid(item.day);
@@ -3931,7 +3977,7 @@ return (
         : ALL_HIST_COLS.filter(c => (reserveMonthly[c.id] || 0) > 0);
       if (histCols.length === 0) return null;
       // Running balances keyed by id
-      const bals = {};
+      const bals: Record<BucketId, number> = {};
       histCols.forEach(c => { bals[c.id] = 0; });
       const rows = [];
       for (let y = setupYear; y <= year + 1; y++)
@@ -3953,7 +3999,7 @@ return (
           );
         }
       // Build short label from bucket label in cfg, fall back to id
-      const colLabel = (id) => {
+      const colLabel = (id: BucketId) => {
         const b = buckets.find(x => x.id === id);
         return ((b && b.label) || id).replace(" Reserve","").replace(" Savings","").replace(" Reserve","");
       };
@@ -3987,7 +4033,7 @@ return (
     </div>
     {(() => {
       //  Payoff calculator 
-      function calcPayoff(debt, customMonthly) {
+      function calcPayoff(debt: Debt, customMonthly?: number) {
         const pmt = customMonthly || debt.monthlyPrincipal;
         if (debt.grows || pmt === 0) return null;
         if (debt.apr === 0) {
@@ -4022,9 +4068,9 @@ return (
       const totalMonthly = debts.reduce((s, d) => s + d.monthly, 0);
       const totalMedBal = medDebts.reduce((s, d) => s + d.balance, 0);
 
-      const typeLabel = { medical: "Medical", auto: "Auto", mortgage: "Mortgage", student: "Student", "credit card": "Credit Card", other: "Other" };
-      const typeColor = { medical: "#FF6B9D", auto: T.blue, mortgage: T.green, student: "#FFB347", "credit card": "#C084FC", other: T.text3 };
-      const typeIcon  = { medical: "local_hospital", auto: "directions_car", mortgage: "home", student: "school", "credit card": "credit_card", other: "payments" };
+      const typeLabel: Record<string, string> = { medical: "Medical", auto: "Auto", mortgage: "Mortgage", student: "Student", "credit card": "Credit Card", other: "Other" };
+      const typeColor: Record<string, string> = { medical: "#FF6B9D", auto: T.blue, mortgage: T.green, student: "#FFB347", "credit card": "#C084FC", other: T.text3 };
+      const typeIcon: Record<string, string> = { medical: "local_hospital", auto: "directions_car", mortgage: "home", student: "school", "credit card": "credit_card", other: "payments" };
 
       return (
         <div>
@@ -4362,7 +4408,7 @@ return (
               }
 
               // -- Helper: find column index by header name --
-              function colIdx(section, name) {
+              function colIdx(section: string, name: string) {
                 var hdr = sections[section] && sections[section][0];
                 if (!hdr) return -1;
                 for (var i = 0; i < hdr.length; i++) {
@@ -4370,14 +4416,14 @@ return (
                 }
                 return -1;
               }
-              function dataRows(section) {
+              function dataRows(section: string): string[][] {
                 return (sections[section] || []).slice(1);
               }
-              function num(v) { return parseFloat(v) || 0; }
+              function num(v: string): number { return parseFloat(v) || 0; }
 
               // -- Parse META --
               var metaRows = sections["META"] || [];
-              var metaMap = {};
+              var metaMap: Record<string, string> = {};
               metaRows.forEach(function(r) { if (r.length >= 2) metaMap[r[0].trim()] = r[1].trim(); });
               var setupDateStr = metaMap["Setup Date"] || "";
               var parsedSetupMonth = 0;
@@ -4432,14 +4478,14 @@ return (
                 return { id: (r[0] || "").trim(), label: (r[1] || "").trim(), amount: num(r[2]), color: "" };
               }).filter(function(b) { return b.id && b.amount > 0; });
               // Assign colors from defaults
-              var discColorMap = { bill001: "#E879F9", bill002: "#FFB347", bill003: "#FCD34D", bill004: "#FB923C", bill005: "#FDE68A" };
+              var discColorMap: Record<BucketId, string> = { bill001: "#E879F9", bill002: "#FFB347", bill003: "#FCD34D", bill004: "#FB923C", bill005: "#FDE68A" };
               discBuckets.forEach(function(b) { b.color = discColorMap[b.id] || T.text3; });
 
               // -- Parse RESERVES --
               var resBuckets = dataRows("RESERVES").map(function(r) {
                 return { id: (r[0] || "").trim(), label: (r[1] || "").trim(), amount: num(r[2]), color: "" };
               }).filter(function(b) { return b.id && b.amount > 0; });
-              var resColorMap = { bill011: "#B8A9FF", bill010: "#60A5FA", bill008: T.green, bill006: "#F97316", bill007: "#FDBA74", bill009: "#F9A8D4", bill012: "#C084FC", bill013: "#34D399" };
+              var resColorMap: Record<BucketId, string> = { bill011: "#B8A9FF", bill010: "#60A5FA", bill008: T.green, bill006: "#F97316", bill007: "#FDBA74", bill009: "#F9A8D4", bill012: "#C084FC", bill013: "#34D399" };
               resBuckets.forEach(function(b) { b.color = resColorMap[b.id] || T.text3; });
 
               // -- Build config --
@@ -4478,7 +4524,7 @@ return (
 
               // -- Parse MONTHLY SPEND + RESERVE SPEND + TRANSACTIONS into data --
               // Start with blank data from setup date
-              var newData = {};
+              var newData: BudgetData = {};
               for (var yy = parsedSetupYear; yy <= new Date().getFullYear() + 1; yy++) {
                 for (var mm = 0; mm < 12; mm++) {
                   newData[yy + "-" + mm] = { spent: {} };
@@ -4486,7 +4532,7 @@ return (
               }
 
               // Helper: parse "Mar 2026" -> { y, m }
-              function parseMonthStr(s) {
+              function parseMonthStr(s: string) {
                 var p = (s || "").trim().split(" ");
                 var mi = MONTHS.indexOf(p[0]);
                 var yr = parseInt(p[1], 10);
@@ -4651,7 +4697,7 @@ return (
     const leftover = Math.max(0, rawLeftover);
     const total = totalIncomeCfg || 1;
 
-    const categories: { key: string; label: string; value: number; color: string; items: { label: string; value: number; color: string; group?: string }[] }[] = [
+    const categories: { key: string; label: string; value: number; color: string; items: FlowItem[] }[] = [
       { key: "fixed", label: "Fixed", value: fixedCommitted, color: T.blue, items: fixedBillItems.map(item => ({ label: item.name, value: item.amt, color: T.blue, group: item.category || "Other" })) },
       { key: "discretionary", label: "Discretionary", value: discBudget, color: "#FFB347", items: allDiscBuckets.filter(b => !linkedDiscIds.has(b.id)).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
       { key: "reserves", label: "Reserves", value: reservesTotal, color: "#B8A9FF", items: buckets.filter(b => RESERVE_IDS_LIST.includes(b.id) && b.amount > 0).map(b => ({ label: b.label, value: b.amount, color: b.color })) },
@@ -4663,10 +4709,10 @@ return (
       categories.push({ key: "leftover", label: "Unallocated", value: leftover, color: T.text3, items: [{ label: "Unallocated cash", value: leftover, color: T.text3 }] });
     }
 
-    const sankeyNodes = [];
-    const sankeyLinks = [];
-    const meta = {}; // id -> { label, value, color }
-    const addNode = (id, label, value, color) => { sankeyNodes.push({ id }); meta[id] = { label, value, color }; };
+    const sankeyNodes: FlowNode[] = [];
+    const sankeyLinks: { source: string; target: string; value: number }[] = [];
+    const meta: Record<string, { label: string; value: number; color: string }> = {};
+    const addNode = (id: string, label: string, value: number, color: string) => { sankeyNodes.push({ id }); meta[id] = { label, value, color }; };
 
     addNode("Income", "Income", totalIncomeCfg, "#7ED4A0");
     categories.forEach(cat => {
@@ -4676,8 +4722,8 @@ return (
 
       if (cat.key === "fixed" && cat.items.length > 0) {
         // Extra level: group fixed bills by their bill category (Housing, Utilities, ...).
-        const order = [];
-        const groups = {};
+        const order: string[] = [];
+        const groups: Record<string, FlowItem[]> = {};
         cat.items.forEach(it => { const g = it.group || "Other"; if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(it); });
         order.forEach((g, gi) => {
           const gItems = groups[g];
@@ -4699,7 +4745,7 @@ return (
         });
       }
     });
-    const colorMap = {};
+    const colorMap: Record<string, string> = {};
     Object.keys(meta).forEach(id => { colorMap[id] = meta[id].color; });
 
     const viewWidth = 760;
@@ -4717,8 +4763,8 @@ return (
       ({ nodes: sankeyNodes.map(d => ({ ...d })), links: sankeyLinks.map(d => ({ ...d })) }) as FlowGraph;
 
     const maxDepth = layout.nodes.reduce((m, n) => Math.max(m, n.depth), 0);
-    const labelForId = (id) => (meta[id] && meta[id].label) || "";
-    const valueForId = (id) => (meta[id] && meta[id].value) || 0;
+    const labelForId = (id: string) => (meta[id] && meta[id].label) || "";
+    const valueForId = (id: string) => (meta[id] && meta[id].value) || 0;
 
     const linkPath = sankeyLinkHorizontal();
     const hoverLink = flowLinkHover != null ? layout.links[flowLinkHover] : null;
