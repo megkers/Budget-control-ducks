@@ -5,6 +5,10 @@
 // App.jsx owns all UI, this file owns the key, the client, and (later) the
 // tool definitions and the tool loop.
 
+// Type-only import: erased at build time, so the SDK still loads lazily in
+// getClient below rather than landing in the initial bundle.
+import type Anthropic from "@anthropic-ai/sdk";
+
 // Models are picked per feature, not shared. The conversation has to reason
 // across every bucket, so it gets the capable model. Verifying a key only needs
 // a round trip that proves the key is real and has credit, so it uses the
@@ -21,23 +25,23 @@ export const VERIFY_MODEL = "claude-haiku-4-5";
 //
 // Consequence worth remembering: any script on this page can read localStorage,
 // so this app must never load a script from a third-party origin.
-export function loadApiKey() {
+export function loadApiKey(): string {
   try { return localStorage.getItem("budgetApiKey") || ""; } catch(e) { return ""; }
 }
-export function saveApiKey(k) {
+export function saveApiKey(k: string): void {
   try { localStorage.setItem("budgetApiKey", k); } catch(e) {}
 }
-export function clearApiKey() {
+export function clearApiKey(): void {
   try { localStorage.removeItem("budgetApiKey"); } catch(e) {}
 }
 
 // Cheap shape check so an obvious paste error fails before we spend a request.
-export function looksLikeApiKey(k) {
+export function looksLikeApiKey(k: unknown): k is string {
   return typeof k === "string" && k.indexOf("sk-ant-") === 0 && k.length > 30;
 }
 
 // Never render a full key back to the screen.
-export function maskKey(k) {
+export function maskKey(k: string): string {
   if (!k) return "";
   return k.slice(0, 11) + "..." + k.slice(-4);
 }
@@ -45,7 +49,7 @@ export function maskKey(k) {
 // Loaded on demand rather than imported at the top of the file. Most people
 // never connect a key, and this keeps roughly 300kB of SDK out of the initial
 // download for a PWA that has to start fast on a phone.
-async function getClient(key) {
+async function getClient(key: string): Promise<Anthropic> {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   return new Anthropic({
     apiKey: key,
@@ -57,9 +61,16 @@ async function getClient(key) {
   });
 }
 
+// Every call in this file reports failure this way instead of throwing, so the
+// UI only ever has to check ok and show error.
+export interface ApiResult {
+  ok: boolean;
+  error: string;
+}
+
 // Smallest possible round trip. Confirms the key is valid and has credit,
 // for a fraction of a cent.
-export async function verifyApiKey(key) {
+export async function verifyApiKey(key: string): Promise<ApiResult> {
   if (!looksLikeApiKey(key)) {
     return { ok: false, error: "That does not look like an Anthropic API key. Keys start with sk-ant-." };
   }
@@ -79,14 +90,22 @@ export async function verifyApiKey(key) {
 // SDK errors carry the raw JSON response body in .message. That is a debugging
 // artifact, not a sentence, and it must never reach the screen. Pull the human
 // part out of it when there is one.
-function humanMessage(msg) {
+function humanMessage(msg: string): string {
   const m = msg.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/);
   if (!m) return msg;
   try { return JSON.parse('"' + m[1] + '"'); } catch (e) { return m[1]; }
 }
 
+// The two fields describeApiError reads. SDK errors have both; a network
+// failure has only message; a caught non-Error value may have neither.
+interface ApiErrorLike {
+  status?: number;
+  message?: string;
+}
+
 // Turn an SDK error into something a budgeting app user can act on.
-export function describeApiError(e) {
+export function describeApiError(caught: unknown): string {
+  const e = caught as ApiErrorLike | null | undefined;
   const status = e && e.status;
   const raw = (e && e.message) || "";
   const msg = humanMessage(raw);
@@ -103,7 +122,7 @@ export function describeApiError(e) {
     return "That key is linked to your identity rather than to a workspace, so Anthropic does not know which workspace to bill. In the Anthropic console, create a key scoped to a workspace and paste that one instead.";
   }
   if (status === 429) return "Rate limited by Anthropic. Wait a moment and try again.";
-  if (status >= 500) return "Anthropic had a server error. Try again shortly.";
+  if (typeof status === "number" && status >= 500) return "Anthropic had a server error. Try again shortly.";
   // A request that never reached the API carries no status. That is the only
   // signal worth trusting here: the SDK does not set .name on these errors, and
   // checking the class name would work in dev and then break in production,
@@ -145,17 +164,34 @@ export const SCREENSHOT_ROW_HINT = 8;
 // Rule matches score 0.7 and 0.9, so only the model's own doubt trips this.
 export const LOW_CONFIDENCE = 0.6;
 
+// A crop in the image's own pixels (not the normalized 0..1 rects in crop.js).
+export interface PixelRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// A cropped image ready to send: base64 PNG plus its final size.
+export interface EncodedImage {
+  data: string;
+  mediaType: "image/png";
+  width: number;
+  height: number;
+}
+
 // Turn a crop rectangle over a loaded image into the payload the API takes.
 // Downscaling belongs here rather than in the UI because the ceiling is a
 // property of the API, not of the crop tool.
-export function cropToBase64(img, rect) {
+export function cropToBase64(img: CanvasImageSource, rect: PixelRect): EncodedImage {
   const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(rect.w, rect.h));
   const w = Math.max(1, Math.round(rect.w * scale));
   const h = Math.max(1, Math.round(rect.h * scale));
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext("2d");
+  // Only null when the canvas already has a different context type; this one is new.
+  const ctx = canvas.getContext("2d")!;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
@@ -166,7 +202,7 @@ export function cropToBase64(img, rect) {
 // the user's money. Takes the crop at full size and applies the same ceiling
 // cropToBase64 does, so the estimate tracks what will actually be sent rather
 // than what was selected.
-export function estimateCents(width, height) {
+export function estimateCents(width: number, height: number): number {
   const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
   const imageTokens = (width * scale * height * scale) / 750;
   const inTokens = imageTokens + 900;
@@ -199,10 +235,37 @@ const EXTRACT_SCHEMA = {
   additionalProperties: false,
 };
 
+// What both AI calls are told about this person's budget.
+export interface BucketChoice {
+  id: string;
+  label: string;
+}
+export interface ConfirmedExample {
+  description: string;
+  bucketId: string;
+}
+export interface AiContext {
+  buckets?: BucketChoice[];
+  examples?: ConfirmedExample[];
+  today?: string;
+}
+
+// One row as EXTRACT_SCHEMA requires the model to return it.
+export interface ExtractedRow {
+  date: string;
+  amount: number;
+  merchant: string;
+  bucketId: string | null;
+  confidence: number;
+}
+export interface ExtractResult extends ApiResult {
+  rows: ExtractedRow[];
+}
+
 // Read a cropped screenshot of a transaction list. One call, one image, bounded
 // output: no loop, no retry, so a screenshot can never cost more than a
 // screenshot. Returns { ok, rows, error } and never throws.
-export async function extractTransactions(key, image, context) {
+export async function extractTransactions(key: string, image: EncodedImage, context?: AiContext): Promise<ExtractResult> {
   const buckets = (context && context.buckets) || [];
   const examples = (context && context.examples) || [];
   const today = (context && context.today) || new Date().toISOString().slice(0, 10);
@@ -248,7 +311,7 @@ export async function extractTransactions(key, image, context) {
     });
 
     const text = (res.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-    let parsed;
+    let parsed: { transactions?: ExtractedRow[] } | null;
     try {
       parsed = JSON.parse(text);
     } catch (err) {
@@ -296,13 +359,31 @@ const SUGGEST_SCHEMA = {
   additionalProperties: false,
 };
 
-// Suggest a bucket for each uncategorized row. rows is [{ id, date, amount,
-// description }]; context carries the same buckets and examples the screenshot
-// reader gets, so both paths categorize with the same picture of this person.
+// An uncategorized import row, as sent to the model.
+export interface SuggestRow {
+  id: string;
+  date?: string;
+  amount?: number;
+  description?: string;
+}
+
+// One suggestion as SUGGEST_SCHEMA requires the model to return it.
+export interface Suggestion {
+  id: string;
+  bucketId: string | null;
+  confidence: number;
+}
+export interface SuggestResult extends ApiResult {
+  suggestions: Suggestion[];
+}
+
+// Suggest a bucket for each uncategorized row. context carries the same
+// buckets and examples the screenshot reader gets, so both paths categorize
+// with the same picture of this person.
 // One call, bounded output, no retry. Returns { ok, suggestions, error } and
 // never throws: a failure here must degrade to "categorize by hand", never
 // block the import.
-export async function suggestBuckets(key, rows, context) {
+export async function suggestBuckets(key: string, rows: SuggestRow[], context?: AiContext): Promise<SuggestResult> {
   const buckets = (context && context.buckets) || [];
   const examples = (context && context.examples) || [];
   const batch = (rows || []).slice(0, CATEGORIZE_MAX_ROWS);
@@ -345,7 +426,7 @@ export async function suggestBuckets(key, rows, context) {
     });
 
     const text = (res.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-    let parsed;
+    let parsed: { suggestions?: Suggestion[] } | null;
     try {
       parsed = JSON.parse(text);
     } catch (err) {
