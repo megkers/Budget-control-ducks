@@ -9,8 +9,8 @@ import sys, json, math, glob, os
 APP = sys.argv[1] if len(sys.argv) > 1 else 'src/App.jsx'
 SRC_DIR = os.path.dirname(APP) or '.'
 SRC_FILES = [APP] + sorted(
-    p for p in glob.glob(os.path.join(SRC_DIR, '*.js')) + glob.glob(os.path.join(SRC_DIR, '*.jsx'))
-    if os.path.basename(p) not in ('App.jsx', 'agent.js', 'main.jsx'))
+    p for ext in ('js', 'jsx', 'ts', 'tsx') for p in glob.glob(os.path.join(SRC_DIR, '*.' + ext))
+    if os.path.basename(p) not in ('App.jsx', 'agent.ts', 'main.tsx'))
 code = ''
 for p in SRC_FILES:
     with open(p, 'rb') as f:

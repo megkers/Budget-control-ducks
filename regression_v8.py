@@ -1,23 +1,26 @@
 import glob
 # App.jsx first so position checks (e.g. WizardShell before OnboardingWizard)
 # still compare within App.jsx; helper modules are appended after it.
-# agent.js is read separately below as `agent`.
+# agent.ts is read separately below as `agent`; main.tsx is only ASCII-checked.
 SRC_FILES = ['src/App.jsx'] + sorted(
-    p for p in glob.glob('src/*.js') + glob.glob('src/*.jsx')
-    if p not in ('src/App.jsx', 'src/agent.js', 'src/main.jsx'))
+    p for ext in ('js', 'jsx', 'ts', 'tsx') for p in glob.glob('src/*.' + ext)
+    if p not in ('src/App.jsx', 'src/agent.ts', 'src/main.tsx'))
 src_bytes = {}
 for p in SRC_FILES:
     with open(p, 'rb') as f:
         src_bytes[p] = f.read()
 b = b''.join(src_bytes.values())
 code = '\n'.join(v.decode('utf-8') for v in src_bytes.values())
-with open('src/agent.js','rb') as f:
+with open('src/agent.ts','rb') as f:
     ab = f.read()
 agent = ab.decode('utf-8')
+with open('src/main.tsx','rb') as f:
+    mb = f.read()
 checks = [
     # -- Babel / ASCII safety --
     ('Non-ASCII bytes',              sum(1 for x in b if x > 127) == 0),
-    ('Non-ASCII bytes (agent.js)',   sum(1 for x in ab if x > 127) == 0),
+    ('Non-ASCII bytes (agent.ts)',   sum(1 for x in ab if x > 127) == 0),
+    ('Non-ASCII bytes (main.tsx)',   sum(1 for x in mb if x > 127) == 0),
     # -- AI assistant --
     ('Agent key storage key',        'budgetApiKey' in agent),
     ('Agent SDK lazy loaded',        'await import("@anthropic-ai/sdk")' in agent),
