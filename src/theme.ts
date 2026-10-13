@@ -1,12 +1,14 @@
+import type { ThemePref, ResolvedTheme, ThemeTokens } from "./types.js";
+
 // ---- Theme tokens: dark / light (ref: Figma Design System page) ----
-export function loadTheme() {
-  try { return localStorage.getItem("budgetTheme") || "dark"; } catch(e) { return "dark"; }
+export function loadTheme(): ThemePref {
+  try { return (localStorage.getItem("budgetTheme") || "dark") as ThemePref; } catch(e) { return "dark"; }
 }
-export function saveTheme(t) {
+export function saveTheme(t: ThemePref): void {
   try { localStorage.setItem("budgetTheme", t); } catch(e) {}
 }
 
-export var THEMES = {
+export var THEMES: Record<ResolvedTheme, ThemeTokens> = {
   dark: {
     bg: "#0a0e17", surf: "#131825", surf2: "#0f1218", bord: "#1e2535",
     text1: "#e8eaf0", text2: "#D8DDE8", text3: "#9ca3af", muted: "#4a5568",
@@ -25,7 +27,7 @@ export var THEMES = {
   },
 };
 
-export function resolveTheme(pref) {
+export function resolveTheme(pref: ThemePref): ResolvedTheme {
   if (pref === "system") {
     try { return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; } catch(e) { return "dark"; }
   }

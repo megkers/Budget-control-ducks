@@ -192,7 +192,7 @@ checks = [
     ('SCHEMA_VERSION constant',      'SCHEMA_VERSION = 4' in code),
     ('ID_RENAMES map',               'ID_RENAMES' in code and 'bill001' in code),
     ('runMigrations function',       'function runMigrations(' in code),
-    ('loadConfig calls runMigrations', 'runMigrations(cfg)' in code),
+    ('loadConfig calls runMigrations', 'runMigrations(' in code[code.find('function loadConfig('):code.find('function saveConfig(')]),
     ('saveConfig stamps version',    'version: SCHEMA_VERSION' in code),
 ]
 for name, result in checks:

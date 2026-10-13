@@ -89,7 +89,7 @@ All three run after each change to ensure correctness and compliance with hard r
 
 ## Architecture
 
-All components live in [src/App.jsx](src/App.jsx). Non-UI helpers live in plain-JS modules next to it: storage and migrations (`storage.js`), CSV parsing (`csv.js`), merchant rules (`rules.js`), constants, debts, crop geometry, formatting, and theme tokens. The component tree is flat:
+All components live in [src/App.jsx](src/App.jsx). Non-UI helpers live in modules next to it: storage and migrations (`storage.ts`), CSV parsing (`csv.js`), merchant rules (`rules.js`), constants, debts, crop geometry, formatting, and theme tokens. The shapes of all saved data are defined as TypeScript types in [src/types.ts](src/types.ts). The component tree is flat:
 
 ```
 Root
