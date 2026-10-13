@@ -1,5 +1,5 @@
 // CSV parsing: our sectioned budget backup format and flat bank exports.
-import type { CsvSections, FlatCsv, CsvColumnMapping, CsvMappings } from "./types.js";
+import type { CsvSections, FlatCsv, CsvColumnMapping, CsvMappings, CsvOutflow } from "./types.js";
 
 // ------------
 // CSV parser - shared by welcome import and settings import
@@ -85,10 +85,23 @@ debit: find([/debit/, /withdrawal/]),
 credit: find([/credit/, /deposit/]),
 };
 }
-// "$1,234.56" -> 1234.56 ; "(45.00)" -> -45 ; "" / junk -> null
+// A leading or trailing CR / DR marker some banks add to a single Amount
+// column: "45.00 CR", "CR 45.00", "(45.00) cr", "45.00DR". null when absent.
+var CSV_MARKER_TAIL = /(?:^|[^a-z])(cr|dr)\.?$/i;
+var CSV_MARKER_HEAD = /^(cr|dr)(?![a-z])\.?/i;
+export function csvAmountMarker(str: string | number | null | undefined): "CR" | "DR" | null {
+if (str == null) return null;
+var s = String(str).trim();
+var m = s.match(CSV_MARKER_TAIL) || s.match(CSV_MARKER_HEAD);
+return m ? (m[1].toUpperCase() as "CR" | "DR") : null;
+}
+// "$1,234.56" -> 1234.56 ; "(45.00)" -> -45 ; "(45.00) CR" -> -45 ; "" / junk -> null
+// A CR / DR marker is stripped here but does not set the sign; csvSpendAmount
+// decides direction from it.
 export function csvParseAmount(str: string | number | null | undefined): number | null {
 if (str == null) return null;
 var s = String(str).trim();
+if (csvAmountMarker(s)) s = s.replace(CSV_MARKER_TAIL, "").replace(CSV_MARKER_HEAD, "").trim();
 if (s === "") return null;
 var neg = false;
 if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
@@ -97,6 +110,16 @@ s = s.replace(/[^0-9.]/g, "");
 if (s === "" || isNaN(parseFloat(s))) return null;
 var n = parseFloat(s);
 return neg ? -n : n;
+}
+// One cell of a single Amount column -> spend (positive) or refund (negative),
+// null when blank or zero. An explicit CR (money in) or DR (money out) marker
+// wins over the sign; otherwise the outflow setting says which sign is spend.
+export function csvSpendAmount(str: string | number | null | undefined, outflow: CsvOutflow): number | null {
+var raw = csvParseAmount(str);
+if (raw == null || raw === 0) return null;
+var marker = csvAmountMarker(str);
+var isOut = marker ? marker === "DR" : (outflow === "negative" ? raw < 0 : raw > 0);
+return isOut ? Math.abs(raw) : -Math.abs(raw);
 }
 var CSV_MONTHS: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 // Accepts YYYY-MM-DD, MM/DD/YYYY, M/D/YY, DD-Mon-YYYY -> "YYYY-MM-DD" (or null).
