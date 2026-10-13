@@ -8,7 +8,7 @@ A privacy-first paycheck-split budgeting app. Allocate income across fixed bills
 
 Most budgeting apps sync your financial data to the cloud. Budget Control does the opposite: **all data lives in localStorage**. Your budget, transactions, and debt payoff plans never leave your device. You get full privacy *and* a fast, responsive app with zero loading states.
 
-This is a single-file React app (~3,500 lines) built for simplicity and portability.
+This is a small React app built for simplicity and portability: all components live in one file, with plain-JS helper modules alongside it.
 
 ## Features
 
@@ -86,7 +86,7 @@ Both suites run after each change to ensure correctness and compliance with hard
 
 ## Architecture
 
-All code lives in [src/App.jsx](src/App.jsx). The component tree is flat:
+All components live in [src/App.jsx](src/App.jsx). Non-UI helpers live in plain-JS modules next to it: storage and migrations (`storage.js`), CSV parsing (`csv.js`), merchant rules (`rules.js`), constants, debts, crop geometry, formatting, and theme tokens. The component tree is flat:
 
 ```
 Root

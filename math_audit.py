@@ -1,12 +1,20 @@
 """
-Math audit test suite for budget-v7.jsx
+Math audit test suite for Budget Control
 Validates every calculation path against known scenarios.
 Run: python3 math_audit.py [path/to/App.jsx]   (defaults to src/App.jsx)
+Helper modules next to App.jsx (storage.js, csv.js, ...) are read too.
 """
-import sys, json, math
+import sys, json, math, glob, os
 
-with open(sys.argv[1] if len(sys.argv) > 1 else 'src/App.jsx', 'rb') as f:
-    code = f.read().decode('utf-8')
+APP = sys.argv[1] if len(sys.argv) > 1 else 'src/App.jsx'
+SRC_DIR = os.path.dirname(APP) or '.'
+SRC_FILES = [APP] + sorted(
+    p for p in glob.glob(os.path.join(SRC_DIR, '*.js')) + glob.glob(os.path.join(SRC_DIR, '*.jsx'))
+    if os.path.basename(p) not in ('App.jsx', 'agent.js', 'main.jsx'))
+code = ''
+for p in SRC_FILES:
+    with open(p, 'rb') as f:
+        code += f.read().decode('utf-8') + '\n'
 
 PASS = 0
 FAIL = 0
