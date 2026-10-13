@@ -6,7 +6,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout budget-controller
+      - name: Checkout budget-control
         uses: actions/checkout@v6
 
       - name: Set up Node
@@ -28,18 +28,23 @@ jobs:
           token: ${{ secrets.PORTFOLIO_PAT }}
           path: my-portfolio
 
+      # The app is served at /budget-control/. It used to be /budget-controller/;
+      # removing that folder too makes the PR a move rather than a second copy.
+      # my-portfolio's .htaccess redirects the old address.
       - name: Copy build output into portfolio.
         run: |
           rm -rf my-portfolio/budget-controller
-          mkdir -p my-portfolio/budget-controller
-          cp -r ./dist/* my-portfolio/budget-controller/
+          rm -rf my-portfolio/budget-control
+          mkdir -p my-portfolio/budget-control
+          cp -r ./dist/* my-portfolio/budget-control/
 
       - name: Open pull request on my-portfolio
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.PORTFOLIO_PAT }}
           path: my-portfolio
-          commit-message: "Update budget-controller build"
+          commit-message: "Update budget-control build"
+          # Branch keeps its old name so runs keep updating the same open PR.
           branch: budget-controller-update
-          title: "Update budget-controller from latest build"
+          title: "Update budget-control from latest build"
           body: "Automated update from Budget-control-ducks main branch."
