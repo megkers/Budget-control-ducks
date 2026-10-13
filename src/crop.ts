@@ -4,10 +4,21 @@
 // Pure and module level so the drag maths can be tested without a browser.
 // All rects are normalized 0..1 against the displayed image.
 
+export interface NormRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// What a press does: resize from a corner or edge, move the box, or start a
+// new one.
+export type CropMode = "nw" | "ne" | "sw" | "se" | "w" | "e" | "n" | "s" | "move" | "draw";
+
 // Keep a rect the right way round and inside the image. Dragging a corner past
 // its opposite side is normal behaviour, not an error, so a negative width is
 // flipped rather than rejected.
-export function cropNormalize(r) {
+export function cropNormalize(r: NormRect): NormRect {
   var x = r.w < 0 ? r.x + r.w : r.x;
   var y = r.h < 0 ? r.y + r.h : r.y;
   var w = Math.abs(r.w), h = Math.abs(r.h);
@@ -21,7 +32,7 @@ export function cropNormalize(r) {
 // What a press at (nx, ny) should do. Corners and edges win over the interior
 // so a finger landing near an edge resizes rather than dragging the whole box.
 // tol is in normalized units, sized by the caller from a real touch target.
-export function cropHit(nx, ny, r, tolX, tolY) {
+export function cropHit(nx: number, ny: number, r: NormRect, tolX: number, tolY: number): CropMode {
   var nearL = Math.abs(nx - r.x) <= tolX;
   var nearR = Math.abs(nx - (r.x + r.w)) <= tolX;
   var nearT = Math.abs(ny - r.y) <= tolY;
@@ -40,8 +51,10 @@ export function cropHit(nx, ny, r, tolX, tolY) {
   return "draw";
 }
 
-// Apply a drag of (dx, dy) to the rect the press started on.
-export function cropApply(mode, r0, dx, dy) {
+// Apply a drag of (dx, dy) to the rect the press started on. "draw" is not
+// accepted: the caller builds a new rect for it, and its letters would
+// otherwise read as a west-edge resize below.
+export function cropApply(mode: Exclude<CropMode, "draw">, r0: NormRect, dx: number, dy: number): NormRect {
   if (mode === "move") {
     var mx = Math.min(1 - r0.w, Math.max(0, r0.x + dx));
     var my = Math.min(1 - r0.h, Math.max(0, r0.y + dy));
