@@ -416,7 +416,7 @@ Or just view the demo
 // ------------
 // Wizard working copies. Fields a person types into stay strings until
 // finish() parses them, so a half-typed number is never coerced mid-edit.
-type IncomeDraft = { label: string; netPay: string; payday: string; payday2?: string; frequency: PayFrequency };
+type IncomeDraft = { label: string; netPay: string; payday: string; frequency: PayFrequency };
 type DebtDraft = Omit<Debt, "balance" | "apr" | "monthly" | "monthlyPrincipal"> & {
   balance: string; apr: string; monthly: number | string; monthlyPrincipal: number | string;
 };
@@ -771,19 +771,10 @@ return (
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>Amount per paycheck (after tax)</div>
 <input type="number" min="0" placeholder="e.g. 1800" value={inc.netPay} onChange={e => upd({ netPay: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "20px", width: "100%", boxSizing: "border-box" }} />
 </div>
-{inc.frequency === "monthly" && (
+{(inc.frequency === "monthly" || inc.frequency === "semimonthly") && (
 <div style={{ marginBottom: "12px" }}>
-<div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>Payday - day of month</div>
+<div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>{inc.frequency === "semimonthly" ? "First payday - day of month" : "Payday - day of month"}</div>
 <input type="number" placeholder="e.g. 27" min="1" max="28" value={inc.payday} onChange={e => upd({ payday: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "100px", boxSizing: "border-box" }} />
-</div>
-)}
-{inc.frequency === "semimonthly" && (
-<div style={{ marginBottom: "12px" }}>
-<div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>Payday days</div>
-<div style={{ display: "flex", gap: "10px" }}>
-<input type="number" placeholder="e.g. 1" min="1" max="28" value={inc.payday} onChange={e => upd({ payday: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "80px" }} />
-<input type="number" placeholder="e.g. 15" min="1" max="28" value={inc.payday2 || ""} onChange={e => upd({ payday2: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "16px", width: "80px" }} />
-</div>
 </div>
 )}
 {(inc.frequency === "weekly" || inc.frequency === "biweekly") && (

@@ -141,6 +141,7 @@ checks = [
     ('Wizard rejects negative pay (#52)', 'if (!(parseFloat(i.netPay) > 0)) return false;' in code),
     ('Income sheet blocks negative pay (#52)', 'noNegativePay' in code and 'disabled={!canSave}' in code),
     ('Reserve cards use T.surf (#53)', 'r.bg' not in code and 'bg?: string' not in code),
+    ('Semimonthly asks one payday (#54)', 'payday2' not in code and '(inc.frequency === "monthly" || inc.frequency === "semimonthly")' in code),
     ('CSV date normalizer',          'function csvParseDate' in code),
     ('CSV dedup hash',               'function csvRowHash' in code),
     ('CSV mapping memory',           'budgetCsvMappings' in code),
