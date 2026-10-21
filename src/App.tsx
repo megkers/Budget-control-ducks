@@ -4,7 +4,7 @@ import { sankey as d3Sankey, sankeyLinkHorizontal } from "d3-sankey";
 import type { SankeyNode, SankeyLink } from "d3-sankey";
 import { loadApiKey, saveApiKey, clearApiKey, maskKey, verifyApiKey, cropToBase64, extractTransactions, estimateCents, SCREENSHOT_ROW_HINT, LOW_CONFIDENCE, suggestBuckets, CATEGORIZE_MAX_ROWS } from "./agent.js";
 import { loadConfig, saveConfig, loadData, saveData, loadDebts, saveDebts, loadTransactions, saveTransactions, newTxnId, toTxnRecord, foldLegacyTransactions, txnInMonth, monthLabelFromDate, getDefaultData } from "./storage.js";
-import { parseCSVSections, parseFlatCSV, csvGuessMapping, csvParseAmount, csvParseDate, csvRowHash, csvHeaderSignature, loadCsvMappings, saveCsvMappings } from "./csv.js";
+import { parseCSVSections, parseFlatCSV, csvGuessMapping, csvParseAmount, csvSpendAmount, csvParseDate, csvRowHash, csvHeaderSignature, loadCsvMappings, saveCsvMappings } from "./csv.js";
 import { loadRules, saveRules, normalizeMerchant, matchRule, upsertRule, loadAiCategorize, saveAiCategorize, mergeAiSuggestions } from "./rules.js";
 import { BILL_TEMPLATE, newBillId, BLANK_BILL, MONTHS, SURVEY_URL, OVERVIEW_LAYOUT, NET_PAY, PAYDAY, BUCKETS } from "./constants.js";
 import { resolveFixedDebtLinks, buildDebtWindow } from "./debts.js";
@@ -731,7 +731,7 @@ const FREQ_OPTS: { value: PayFrequency; label: string; note: string }[] = [
 ];
 const fmt0 = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 const canNext = incomes.every(i => {
-if (!parseFloat(i.netPay)) return false;
+if (!(parseFloat(i.netPay) > 0)) return false;
 if (i.frequency === "monthly" || i.frequency === "semimonthly") {
 if (!i.payday || parseInt(i.payday) < 1 || parseInt(i.payday) > 28) return false;
 }
@@ -769,7 +769,7 @@ return (
 </div>
 <div style={{ marginBottom: "12px" }}>
 <div style={{ fontSize: "12px", letterSpacing: "0.15em", color: T.text3, textTransform: "uppercase", marginBottom: "6px" }}>Amount per paycheck (after tax)</div>
-<input type="number" placeholder="e.g. 1800" value={inc.netPay} onChange={e => upd({ netPay: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "20px", width: "100%", boxSizing: "border-box" }} />
+<input type="number" min="0" placeholder="e.g. 1800" value={inc.netPay} onChange={e => upd({ netPay: e.target.value })} style={{ background: T.bg, border: "1px solid " + T.bord, color: T.text1, padding: "8px 10px", borderRadius: "4px", fontSize: "20px", width: "100%", boxSizing: "border-box" }} />
 </div>
 {inc.frequency === "monthly" && (
 <div style={{ marginBottom: "12px" }}>
@@ -1567,11 +1567,7 @@ const cred = csvParseAmount(r[mapping.credit]);
 if (cred != null && cred !== 0) amount = -Math.abs(cred);
 }
 } else {
-const raw = csvParseAmount(r[mapping.amount]);
-if (raw != null && raw !== 0) {
-const isOut = outflow === "negative" ? raw < 0 : raw > 0;
-amount = isOut ? Math.abs(raw) : -Math.abs(raw);
-}
+amount = csvSpendAmount(r[mapping.amount], outflow);
 }
 const description = (mapping.description !== -1 ? (r[mapping.description] || "") : "").trim();
 if (date == null || amount == null) { skipped++; return; } // malformed or blank
@@ -1940,7 +1936,7 @@ const saveEditModal = () => {
 };
 
 // Shared modal overlay wrapper - renderXxx pattern per rule 3
-const renderModalOverlay = (title: string, content: ReactNode) => (
+const renderModalOverlay = (title: string, content: ReactNode, canSave = true) => (
   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}
     onClick={e => { if (e.target === e.currentTarget) setEditModal(null); }}>
     <div style={{ background: T.surf, borderRadius: "8px 8px 0 0", width: "100%", maxWidth: "600px", maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
@@ -1953,7 +1949,7 @@ const renderModalOverlay = (title: string, content: ReactNode) => (
       <div style={{ overflowY: "auto", padding: "16px 20px 8px", flex: 1 }}>{content}</div>
       <div style={{ padding: "12px 20px 20px", borderTop: "1px solid " + T.bord, display: "flex", gap: "10px", flexShrink: 0 }}>
         <button onClick={() => setEditModal(null)} style={{ flex: 1, background: "transparent", border: "1px solid " + T.bord, color: T.text3, padding: "10px", borderRadius: "4px", fontSize: "12px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Cancel</button>
-        <button onClick={saveEditModal} style={{ flex: 2, background: T.blue, border: "none", color: T.bg, padding: "10px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: "pointer", fontFamily: "DM Mono, monospace" }}>Save Changes</button>
+        <button onClick={saveEditModal} disabled={!canSave} style={{ flex: 2, background: T.blue, border: "none", color: T.bg, padding: "10px", borderRadius: "4px", fontSize: "13px", fontWeight: "700", cursor: canSave ? "pointer" : "not-allowed", opacity: canSave ? 1 : 0.4, fontFamily: "DM Mono, monospace" }}>Save Changes</button>
       </div>
     </div>
   </div>
@@ -2941,6 +2937,8 @@ const renderEditIncome = () => {
   ];
   var FREQ_MULT: Record<string, number> = { weekly: 52/12, biweekly: 26/12, semimonthly: 2, monthly: 1 };
   var totalMo = Math.round(editIncomes.reduce(function(s, i) { return s + (parseFloat(i.netPay) || 0) * (FREQ_MULT[i.frequency] || 1); }, 0) * 100) / 100;
+  // Blank rows are dropped on save as before; a negative paycheck blocks Save.
+  var noNegativePay = editIncomes.every(function(i) { return !(parseFloat(i.netPay) < 0); });
   return renderModalOverlay("Edit Income", (
     <div>
       <div style={{ background: T.bg, borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", display: "flex", justifyContent: "space-between" }}>
@@ -2985,7 +2983,7 @@ const renderEditIncome = () => {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
               <div>
                 <div style={{ ...cs.lbl, marginBottom: "4px" }}>Per paycheck</div>
-                <input type="number" placeholder="0" value={inc.netPay}
+                <input type="number" min="0" placeholder="0" value={inc.netPay}
                   onChange={function(e) { var v = e.target.value; setEditIncomes(function(p) { return p.map(function(x, j) { return j === i ? Object.assign({}, x, { netPay: v }) : x; }); }); }}
                   style={{ ...cs.inp, width: "100%", boxSizing: "border-box", fontSize: "15px" }} />
               </div>
@@ -3015,7 +3013,7 @@ const renderEditIncome = () => {
         </button>
       )}
     </div>
-  ));
+  ), noNegativePay);
 };
 
 // Floating edit button used in each tab
@@ -3909,8 +3907,8 @@ return (
       );
     })()}
     {(() => {
-      // monthly is filled in just below; bg is read by the card but never set.
-      const RESERVE_BUCKETS: (Bucket & { monthly?: number; bg?: string })[] = buckets.filter(b => ["bill006", "bill007", "bill008", "bill009", "bill011", "bill012", "bill010"].includes(b.id) && b.amount > 0);
+      // monthly is filled in just below.
+      const RESERVE_BUCKETS: (Bucket & { monthly?: number })[] = buckets.filter(b => ["bill006", "bill007", "bill008", "bill009", "bill011", "bill012", "bill010"].includes(b.id) && b.amount > 0);
       // monthly contribution comes from cfg via reserveMonthly, not hardcoded
       RESERVE_BUCKETS.forEach(b => b.monthly = reserveMonthly[b.id] || b.amount || 0);
       return (
@@ -3922,7 +3920,7 @@ return (
         return (
           <div key={r.id} style={{ marginBottom: "10px" }}>
             <div onClick={() => setExpandedReserve(isOpen ? null : r.id)}
-              style={{ background: r.bg, border: `1px solid ${isOpen ? r.color : r.color + "88"}`, borderRadius: isOpen ? "8px 8px 0 0" : "8px", padding: "16px 20px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              style={{ background: T.surf, border: `1px solid ${isOpen ? r.color : r.color + "88"}`, borderRadius: isOpen ? "8px 8px 0 0" : "8px", padding: "16px 20px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                 <div style={{ opacity: 0.9, flexShrink: 0 }}>
                   {RESERVE_ICONS[r.id] ? RESERVE_ICONS[r.id](r.color) : null}
