@@ -3047,10 +3047,10 @@ return (
 <div style={{ fontSize: "22px", fontWeight: "700", color: T.text1, letterSpacing: "-0.02em" }}>Budget Control</div>
 </div>
 <div style={{ display: "flex", gap: "8px" }}>
-<select value={month} onChange={e => setMonth(+e.target.value)} style={cs.sel}>
+<select value={month} onChange={e => setMonth(+e.target.value)} style={cs.sel} aria-label="Budget month">
 {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
 </select>
-<select value={year} onChange={e => setYear(+e.target.value)} style={cs.sel}>
+<select value={year} onChange={e => setYear(+e.target.value)} style={cs.sel} aria-label="Budget year">
 {(function() { var yrs = []; for (var y = setupYear; y <= now.getFullYear() + 2; y++) yrs.push(y); return yrs; })().map(y => <option key={y} value={y}>{y}</option>)}
 </select>
 </div>
@@ -3064,11 +3064,11 @@ onChange={e => setSearch(e.target.value)}
 style={{ ...cs.inp, flex: 1, fontSize: "16px", padding: "8px 12px", minWidth: 0 }}
 />
 {search && (
-<button onClick={() => setSearch("")} style={{ background: "none", border: "1px solid " + T.bord, color: T.text2, padding: "7px 12px", borderRadius: "4px", cursor: "pointer", fontSize: "16px", flexShrink: 0, whiteSpace: "nowrap" }}></button>
+<button onClick={() => setSearch("")} aria-label="Clear search" style={{ background: "none", border: "1px solid " + T.bord, color: T.text2, padding: "7px 12px", borderRadius: "4px", cursor: "pointer", fontSize: "16px", flexShrink: 0, whiteSpace: "nowrap", display: "flex", alignItems: "center" }}><span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: "16px" }}>close</span></button>
 )}
 <button onClick={() => { resetCsv(); setEditModal("logspend"); }}
   style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, whiteSpace: "nowrap" }}>
-  <span className="material-symbols-outlined" style={{ fontSize: "16px", color: T.blue }}>add_circle</span>
+  <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: "16px", color: T.blue }}>add_circle</span>
   Log Spend
 </button>
 {/* Assistant lives in the action row, not the tab bar: it reads across every
@@ -3076,7 +3076,7 @@ style={{ ...cs.inp, flex: 1, fontSize: "16px", padding: "8px 12px", minWidth: 0 
     sheet keeps whichever tab you were reading underneath. */}
 <button onClick={() => setAgentOpen(true)}
   style={{ background: T.bg, border: "1px solid " + T.blue, color: T.blue, padding: "7px 14px", borderRadius: "4px", fontSize: "12px", cursor: "pointer", fontFamily: "DM Mono, monospace", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, whiteSpace: "nowrap" }}>
-  <span className="material-symbols-outlined" style={{ fontSize: "16px", color: T.blue }}>auto_awesome</span>
+  <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: "16px", color: T.blue }}>auto_awesome</span>
   Ask
 </button>
 </div>
